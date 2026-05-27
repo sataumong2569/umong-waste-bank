@@ -19,6 +19,9 @@ import {
     collection, doc, getDocs, getDoc, setDoc, updateDoc, deleteDoc, addDoc,
     query, where, orderBy, limit, increment, serverTimestamp, startAfter
 } from 'firebase/firestore';
+import MapView from './MapView.jsx';
+
+
 
 // === ส่วนที่ 2: องค์ประกอบย่อย (Sub-Components & Constants) ===
 // ส่วนนี้คือการสร้าง "ชิ้นส่วนเล็กๆ" ไว้ข้างนอก เพื่อให้ตัว App หลักเรียกใช้ได้ง่ายและไม่รก
@@ -425,88 +428,9 @@ const PriceView = ({ isLoggedIn, isEditing, setIsEditing }) => {
         </div>
     );
 };
-// === หน้าจอแผนที่ (MapView) ===
-// ทำหน้าที่ดึงแผนที่ขึ้นมาแสดงผล และปักหมุดบ้านสมาชิกแต่ละหลังลงบนแผนที่
-const MapView = ({ currentLocation, members, findMyLocation, onPinLocation, isLoggedIn }) => {
 
-    // ใช้ useEffect เพื่อให้แผนที่วาดใหม่ทุกครั้งที่มีการเปลี่ยนพิกัดหรือข้อมูลสมาชิก
-    React.useEffect(() => {
-        const L = window.L; // เรียกใช้ Leaflet จากที่โหลดไว้ในหน้า index.html
-        if (!L) return;
 
-        // 1. สร้างแผนที่และตั้งค่ามุมมองเริ่มต้นตามพิกัดปัจจุบัน
-        const map = L.map('map-container').setView([currentLocation.lat, currentLocation.lng], 16);
 
-        // 2. ดึงลายแผนที่ (OpenStreetMap)
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap'
-        }).addTo(map);
-
-        // 3. สร้างไอคอนพิเศษสำหรับ "ตำแหน่งปัจจุบันของคุณ" (สีเขียว)
-        const myIcon = L.icon({
-            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
-            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-            iconSize: [25, 41],
-            iconAnchor: [12, 41]
-        });
-
-        // ปักหมุดตำแหน่งปัจจุบันพร้อมเปิด Popup ทันที
-        L.marker([currentLocation.lat, currentLocation.lng], { icon: myIcon })
-            .addTo(map)
-            .bindPopup("<b>คุณอยู่ที่นี่</b>")
-            .openPopup();
-
-        // 🗺️ ✨ [เวอร์ชันซ่อมแซม Popup แผนที่]: ปรับเปลี่ยนจากการดึง m.name ที่ไม่มีอยู่จริง ให้โชว์เลขที่บ้านเด่นๆ ด้านบนแทน หน้าจอไม่ขึ้น undefined แล้วครับน้า
-        members.forEach(m => {
-            if (m.lat && m.lng) {
-                L.marker([m.lat, m.lng]).addTo(map)
-                    .bindPopup(`
-                <div style="font-family: sans-serif; padding: 4px; min-width: 120px; text-align: left;">
-                    <h4 style="margin: 0 0 4px 0; color: #1e3a8a; font-size: 14px; font-weight: bold;">
-                        🏠 บ้านเลขที่ ${m.houseNo}
-                    </h4>
-                    <p style="margin: 0 0 6px 0; font-size: 11px; color: #64748b; font-weight: bold;">
-                        หมวด: ${m.category || 'ไม่ระบุหมวด'}
-                    </p>
-                    <div style="padding-top: 6px; border-top: 1px dashed #e2e8f0;">
-                        <span style="font-weight: 900; color: #d97706; font-size: 13px;">
-                            เครดิตสะสม: ${(m.credit || 0).toLocaleString()} 🪙
-                        </span>
-                    </div>
-                </div>
-            `);
-            }
-        });
-
-        // สำคัญ: ฟังก์ชันล้างข้อมูลเมื่อปิดหน้าจอ (Cleanup) เพื่อป้องกันแผนที่ซ้อนกันจนค้าง
-        return () => map.remove();
-    }, [currentLocation, members]);
-
-    return (
-        <div className="sticky top-20 z-40 h-[600px] w-full rounded-3xl overflow-hidden border-4 border-white shadow-xl">
-            {/* แผนที่ */}
-            <div id="map-container" className="h-full w-full z-0"></div>
-
-            {/* ปุ่มกด: ค้นหาตำแหน่งตัวเอง (GPS) */}
-            <button
-                onClick={findMyLocation}
-                className="absolute top-6 right-6 z-[1000] bg-white p-4 rounded-2xl shadow-lg text-blue-600 active:scale-95 transition-all"
-            >
-                <Navigation size={24} />
-            </button>
-
-            {/* ปุ่มปักหมุดสมาชิกใหม่: จะแสดงให้เห็นและกดได้เฉพาะ "เจ้าหน้าที่" เท่านั้น */}
-            {isLoggedIn && (
-                <button
-                    onClick={() => onPinLocation(currentLocation)}
-                    className="absolute bottom-10 left-1/2 -translate-x-1/2 z-[1000] bg-green-600 text-white px-8 py-4 rounded-full shadow-2xl flex items-center gap-2 font-bold hover:bg-green-700 active:scale-95 transition-all"
-                >
-                    <MapPin size={24} /> ปักหมุดลงทะเบียนบ้านนี้
-                </button>
-            )}
-        </div>
-    );
-};
 
 // =========================================================================
 // ➕ [ขั้นตอนที่ 2: เพิ่มใหม่] คอมโพเนนต์หน้าต่างป๊อปอัพสำหรับแก้ไขข้อมูลสมาชิกและพิกัดหมุด (ระบบ Leaflet)
@@ -869,22 +793,33 @@ const MembersView = ({ members, setMembers, villages, setVillages, isLoggedIn, l
 
         if (window.confirm("คุณแน่ใจใช่ไหมที่จะลบสมาชิกคนนี้? ข้อมูลทั้งหมดจะหายไปถาวร")) {
             try {
-                // 1. ลบจาก Firebase (Cloud)
+                // 1. ลบจาก Firebase
                 await deleteDoc(doc(db, "members", String(memberId)));
 
-                // 2. หักลบสถิติใน villages
+                // 2. หักลบสถิติใน villages (แก้ตรงนี้ครับ!)
                 if (targetMember) {
                     if (typeof logAdminAction === 'function') {
                         logAdminAction(`ได้ทำการลบข้อมูลครัวเรือน "บ้านเลขที่ ${targetMember.houseNo}" ออกจากฐานข้อมูลถาวร`);
                     }
+
                     setVillages(prevVillages => {
                         const updatedVillages = prevVillages.map(v => {
                             if (v.id === targetMember.villageId) {
                                 const nextWasteData = { ...v.wasteData };
+
+                                // หักน้ำหนักขยะออก
                                 Object.keys(targetMember.wasteData || {}).forEach(type => {
                                     nextWasteData[type] = Math.max(0, (Number(nextWasteData[type]) || 0) - (Number(targetMember.wasteData[type]) || 0));
                                 });
-                                return { ...v, wasteData: nextWasteData };
+
+                                // ➕ สำคัญ: หักเครดิตออกจากยอดรวมหมวดด้วย!
+                                const newCredit = Math.max(0, (Number(v.credit) || 0) - (Number(targetMember.credit) || 0));
+
+                                return {
+                                    ...v,
+                                    wasteData: nextWasteData,
+                                    credit: newCredit
+                                };
                             }
                             return v;
                         });
@@ -893,7 +828,7 @@ const MembersView = ({ members, setMembers, villages, setVillages, isLoggedIn, l
                     });
                 }
 
-                // 3. อัปเดตสมาชิกและ LocalStorage
+                // 3. อัปเดต State สมาชิก
                 const nextMembers = members.filter(m => m.id !== memberId);
                 setMembers(nextMembers);
                 localStorage.setItem('local_members_data', JSON.stringify(nextMembers));
@@ -2141,6 +2076,21 @@ const App = () => {
         fetchData();
     }, []);
 
+    const fetchAllMembersForStats = async () => {
+        try {
+            const q = query(collection(db, "members"));
+            const querySnapshot = await getDocs(q);
+            const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setAllMembers(data);
+        } catch (err) {
+            console.error("ดึงข้อมูลสมาชิกทั้งหมดพลาด:", err);
+        }
+    };
+
+    useEffect(() => {
+        fetchAllMembersForStats();
+    }, []);
+
     useEffect(() => {
         const loadLogsFromCloud = async () => {
             try {
@@ -2244,8 +2194,8 @@ const App = () => {
     const [isMenuOpen, setIsMenuOpen] = useState(false);        // สถานะการเปิด/ปิดเมนูมือถือ
 
     // ข้อมูลสมาชิกและตำแหน่ง
-    // 📡 [ปรับเป็นระบบคลาวด์]: ตั้งค่าเริ่มต้นเป็นกล่องเปล่าเพื่อรอดึงข้อมูลสดจากออนไลน์ Firebase Firestore
     const [members, setMembers] = useState([]);
+    const [allMembers, setAllMembers] = useState([]);
     const [currentLocation, setCurrentLocation] = useState({ lat: 18.5244, lng: 99.0435 }); // จุดกึ่งกลางแผนที่ (อุโมงค์)
     const [currentUser, setCurrentUser] = useState(null);       // ข้อมูลแอดมินที่ล็อกอินอยู่
 
@@ -2259,7 +2209,7 @@ const App = () => {
     // 📡 [ปรับเป็นระบบคลาวด์]: ตั้งค่าประวัติแอดมินเริ่มต้นเป็นกล่องเปล่าเพื่อรอดึงจากอินเทอร์เน็ต
     const [adminLogs, setAdminLogs] = useState([]);
     const [isRecordWasteOpen, setIsRecordWasteOpen] = useState(false);
-
+    const [isMapLoaded, setIsMapLoaded] = useState(false);
 
     // ➕ [เพิ่มใหม่]: ฟังก์ชันส่วนกลางสำหรับบันทึกประวัติการกระทำของเจ้าหน้าที่ระบบ
     const logAdminAction = async (actionText) => { // 1. เติม async เข้าไป
@@ -2402,12 +2352,12 @@ const App = () => {
     // --- 5. สรุปสถิติ 5 กล่องหลักสำหรับหน้า Dashboard ---
     const stats = useMemo(() => {
         // 1. รวมขยะรวมจากสมาชิกทุกคน
-        const totalWeight = members.reduce((acc, m) => {
+        const totalWeight = allMembers.reduce((acc, m) => {
             return acc + Object.values(m.wasteData || {}).reduce((a, b) => a + Number(b), 0);
         }, 0);
 
         // 2. หาประเภทขยะมากที่สุดจากสมาชิก
-        const typeTotals = members.reduce((acc, m) => {
+        const typeTotals = allMembers.reduce((acc, m) => {
             Object.entries(m.wasteData || {}).forEach(([type, weight]) => {
                 acc[type] = (acc[type] || 0) + Number(weight);
             });
@@ -2421,8 +2371,8 @@ const App = () => {
         return [
             { label: 'ประเภทขยะมากที่สุด', value: topLabel, icon: <Database className="text-blue-500" /> },
             { label: 'ขยะรวมทั้งระบบ', value: `${totalWeight.toLocaleString()} กก.`, icon: <TrendingUp className="text-blue-500" /> },
-            { label: 'เครดิตรวมทุกหมวด', value: members.reduce((acc, m) => acc + (m.credit || 0), 0).toLocaleString(), icon: <Wallet className="text-blue-500" /> },
-            { label: 'จำนวนครัวเรือน', value: members.length, icon: <Users className="text-blue-500" /> },
+            { label: 'เครดิตรวมทุกหมวด', value: allMembers.reduce((acc, m) => acc + (m.credit || 0), 0).toLocaleString(), icon: <Wallet className="text-blue-500" /> },
+            { label: 'จำนวนครัวเรือน', value: allMembers.length, icon: <Users className="text-blue-500" /> },
             {
                 label: 'ลดการปล่อยคาร์บอน',
                 value: `${carbonStats.toFixed(2)} kgCO2e`,
@@ -2430,14 +2380,14 @@ const App = () => {
                 hasTooltip: true
             }
         ];
-    }, [members, carbonStats]);
+    }, [allMembers, carbonStats, villages]);
 
     // --- 6. ข้อมูลสรุปรายหมวด (Village Data Calculation) ---
     // ทำหน้าที่รวบรวมคะแนนจาก "รายบ้าน" และ "น้ำหนักขยะในหมวด" มารวมกันเป็นคะแนนรวมของแต่ละหมวด
     const villageData = useMemo(() => {
         return villages.map(v => {
             // 1. กรองสมาชิกที่อยู่หมวดนี้จริงๆ
-            const vMembers = members.filter(m => Number(m.villageId) === Number(v.id));
+            const vMembers = allMembers.filter(m => Number(m.villageId) === Number(v.id));
 
             // 2. คำนวณเครดิตรวมจากสมาชิกในหมวดนี้
             const memberCredits = vMembers.reduce((sum, m) => sum + (Number(m.credit) || 0), 0);
@@ -2463,14 +2413,14 @@ const App = () => {
                 value: Math.max(0, memberCredits) > 0 ? Math.max(0, memberCredits) : 0.1
             };
         });
-    }, [villages, members]);
+    }, [villages, allMembers]);
 
     // --- 7. ข้อมูลสำหรับกราฟแท่ง (Bar Chart Calculation) ---
     const wasteTypeData = useMemo(() => {
         const types = ['พลาสติก', 'กระดาษ', 'แก้ว', 'อลูมิเนียม', 'โลหะผสม'];
 
         // 1. รวมขยะทุกประเภทจากสมาชิกทุกคน
-        const totals = members.reduce((acc, m) => {
+        const totals = allMembers.reduce((acc, m) => {
             Object.entries(m.wasteData || {}).forEach(([type, weight]) => {
                 acc[type] = (acc[type] || 0) + Number(weight);
             });
@@ -2482,14 +2432,14 @@ const App = () => {
             name: type,
             amount: totals[type] || 0
         }));
-    }, [members]);
+    }, [allMembers]);
 
     //* --- renderContent: ฟังก์ชันสำหรับตัดสินใจว่าจะแสดงหน้าจอไหน-- -
     //* ทำหน้าที่เหมือนสวิตช์ไฟ(Switch Case) ตามค่าของตัวแปร currentPage
     const renderContent = () => {
         switch (currentPage) {
             case 'dashboard':
-                return <MemoizedDashboardView stats={stats} villageData={villageData} wasteTypeData={wasteTypeData} members={members} />;
+                return <MemoizedDashboardView stats={stats} villageData={villageData} wasteTypeData={wasteTypeData} members={allMembers} />;
 
             case 'villages':
                 return <VillagesView villageData={villageData} setSelectedVillage={setSelectedVillage} setCurrentPage={setCurrentPage} isLoggedIn={isLoggedIn} setEditingVillage={setEditingVillage} />;
@@ -2521,17 +2471,30 @@ const App = () => {
                 // ส่งต่อสเตตัสแอดมินล็อกเข้าไปทำงานในหน้าแยกได้อย่างปลอดภัย หน้าไม่ขาวแล้ว
                 return <AdminLogsView adminLogs={adminLogs} setAdminLogs={setAdminLogs} />;
             case 'map':
-                return (
-                    <MapView
-                        currentLocation={currentLocation}
-                        members={members}
-                        findMyLocation={findMyLocation}
-                        onPinLocation={(loc) => {
-                            setTempLocation(loc);
-                            setIsAddMemberOpen(true);
-                        }}
-                        isLoggedIn={isLoggedIn}
-                    />
+                return !isMapLoaded ? (
+                    <div className="flex flex-col items-center justify-center h-[500px] bg-white rounded-3xl m-4 border-2 border-dashed border-slate-200">
+                        <h3 className="font-bold text-slate-600 mb-4">แผนที่ครัวเรือนสมาชิก</h3>
+                        <button
+                            onClick={() => setIsMapLoaded(true)}
+                            className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-bold hover:bg-blue-700 transition shadow-lg"
+                        >
+                            เปิดแผนที่ (กดเพื่อโหลด)
+                        </button>
+                    </div>
+                ) : (
+                    <React.Suspense fallback={<div className="h-[500px] flex items-center justify-center">กำลังเตรียมแผนที่...</div>}>
+                        <MapView
+                            currentLocation={currentLocation || { lat: 18.57, lng: 98.98 }}
+                            members={members}
+                            findMyLocation={findMyLocation}
+                            onPinLocation={(loc) => {
+                                setTempLocation(loc);
+                                setIsAddMemberOpen(true);
+                            }}
+                            isLoggedIn={isLoggedIn}
+                            villages={villages} // อย่าลืมส่งตัวแปร villages เข้าไปด้วยนะครับ
+                        />
+                    </React.Suspense>
                 );
 
             case 'admin':
@@ -2539,7 +2502,7 @@ const App = () => {
                     <AdminPanel
                         currentUser={currentUser}
                         setCurrentPage={setCurrentPage}
-                        members={members}
+                        members={allMembers}
                         setMembers={setMembers}
                         editingVillage={editingVillage}
                         setEditingVillage={setEditingVillage}
@@ -2559,7 +2522,7 @@ const App = () => {
                 );
 
             default:
-                return <MemoizedDashboardView stats={stats} villageData={villageData} wasteTypeData={wasteTypeData} members={members} />;
+                return <MemoizedDashboardView stats={stats} villageData={villageData} wasteTypeData={wasteTypeData} members={allMembers} />;
         }
     };
 
@@ -2609,7 +2572,7 @@ const App = () => {
                 <div className="bg-sky-900 text-white shadow-inner transition-all">
                     <div className="max-w-7xl mx-auto px-4 h-16 md:h-24 flex items-center justify-between">
 
-                        {/* ส่วนแสดงแบรนดิ้ง (โลโก้ + ชื่อเว็บ) */}
+                        {/*  (โลโก้ + ชื่อเว็บ) */}
                         <div className="flex items-center gap-3 md:gap-4 cursor-pointer group" onClick={() => setCurrentPage('dashboard')}>
                             {/* 💻 ปรับขนาดกล่องครอบโลโก้ฝั่งคอมให้กว้างขวางขึ้นด้วย md:p-1.5 */}
                             <div className="bg-white p-0.5 md:p-1.5 rounded-xl shadow-sm transition-transform group-hover:scale-105">
@@ -2673,17 +2636,16 @@ const App = () => {
                 <div className="bg-white/90 border-t border-sky-100/50 hidden md:block backdrop-blur-md">
                     <div className="max-w-7xl mx-auto px-4 py-2.5 flex items-center justify-between">
 
-                        {/* 🛠️ เรียกใช้งาน NavItem รูปแบบเดิมของน้าทั้งหมด พร้อมใช้คลาสช่วยขยายขนาดปุ่มให้เต็มอิ่มขึ้น */}
+                        {/*  NavItem*/}
                         <nav className="hidden md:flex gap-2 text-base font-extrabold [&_button]:py-2.5 [&_button]:px-5 [&_button]:rounded-xl [&_button]:transition-all">
-                            <NavItem active={currentPage === 'dashboard'} onClick={() => setCurrentPage('dashboard')} label="📊 ภาพรวมระบบ" />
-                            <NavItem active={currentPage === 'villages'} onClick={() => setCurrentPage('villages')} label="🏠 ข้อมูลสมาชิก" />
-                            <NavItem active={currentPage === 'prices'} onClick={() => setCurrentPage('prices')} label="🪙 ราคารับซื้อ" />
+                            <NavItem active={currentPage === 'dashboard'} onClick={() => { setCurrentPage('dashboard'); setIsMapLoaded(false); }} label="📊 ภาพรวมระบบ" />
+                            <NavItem active={currentPage === 'villages'} onClick={() => { setCurrentPage('villages'); setIsMapLoaded(false); }} label="🏠 ข้อมูลสมาชิก" />
+                            <NavItem active={currentPage === 'prices'} onClick={() => { setCurrentPage('prices'); setIsMapLoaded(false); }} label="🪙 ราคารับซื้อ" />
                             <NavItem active={currentPage === 'map'} onClick={() => setCurrentPage('map')} label="🗺️ แผนที่ครัวเรือน" />
 
-                            {/* แสดงเมนูจัดการระบบเมื่อแอดมินล็อกอินแล้ว */}
                             {isLoggedIn && (
                                 <button
-                                    onClick={() => setCurrentPage('admin')}
+                                    onClick={() => { setCurrentPage('admin'); setIsMapLoaded(false); }}
                                     className={`px-5 py-2.5 rounded-xl text-base font-black transition-all ${currentPage === 'admin'
                                         ? 'bg-sky-600 text-white shadow-md shadow-sky-200'
                                         : 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100'
@@ -2701,14 +2663,14 @@ const App = () => {
                 {/* ── 📱 เมนูสำหรับหน้าจอมือถือ (Mobile Navigation) ── */}
                 {isMenuOpen && (
                     <div className="md:hidden bg-white border-t border-sky-100/70 p-3 flex flex-col gap-1 shadow-lg animate-fadeIn">
-                        <MobileNavItem active={currentPage === 'dashboard'} onClick={() => { setCurrentPage('dashboard'); setIsMenuOpen(false); }} label="📊 ภาพรวมระบบ" />
-                        <MobileNavItem active={currentPage === 'villages'} onClick={() => { setCurrentPage('villages'); setIsMenuOpen(false); }} label="🏠 ข้อมูลหมู่บ้าน" />
-                        <MobileNavItem active={currentPage === 'prices'} onClick={() => { setCurrentPage('prices'); setIsMenuOpen(false); }} label="🪙 ราคารับซื้อ" />
-                        <MobileNavItem active={currentPage === 'map'} onClick={() => { setCurrentPage('map'); setIsMenuOpen(false); }} label="🗺️ แผนที่ครัวเรือน" />
+                        <MobileNavItem active={currentPage === 'dashboard'} onClick={() => { setCurrentPage('dashboard'); setIsMapLoaded(false); setIsMenuOpen(false); }} label="📊 ภาพรวมระบบ" icon={<LayoutDashboard size={18} />} />
+                        <MobileNavItem active={currentPage === 'villages'} onClick={() => { setCurrentPage('villages'); setIsMapLoaded(false); setIsMenuOpen(false); }} label="🏠 ข้อมูลหมู่บ้าน" icon={<Users size={18} />} />
+                        <MobileNavItem active={currentPage === 'prices'} onClick={() => { setCurrentPage('prices'); setIsMapLoaded(false); setIsMenuOpen(false); }} label="🪙 ราคารับซื้อ" icon={<Wallet size={18} />} />
+                        <MobileNavItem active={currentPage === 'map'} onClick={() => { setCurrentPage('map'); setIsMenuOpen(false); }} label="🗺️ แผนที่ครัวเรือน" icon={<MapIcon size={18} />} />
 
                         {isLoggedIn && (
                             <button
-                                onClick={() => { setCurrentPage('admin'); setIsMenuOpen(false); }}
+                                onClick={() => { setCurrentPage('admin'); setIsMapLoaded(false); setIsMenuOpen(false); }}
                                 className="flex items-center gap-3 p-3 rounded-xl text-sm font-black mt-1.5 transition-all bg-amber-50 text-amber-700 border border-amber-200/60"
                             >
                                 <LayoutDashboard size={18} />
