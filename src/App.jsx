@@ -21,7 +21,6 @@ import {
     query, where, orderBy, limit, increment, serverTimestamp, startAfter, onSnapshot
 } from 'firebase/firestore';
 import MapView from './MapView.jsx';
-import { staffsData } from './staffData';
 
 // === ส่วนที่ 2: องค์ประกอบย่อย (Sub-Components & Constants) ===
 // ส่วนนี้คือการสร้าง "ชิ้นส่วนเล็กๆ" ไว้ข้างนอก เพื่อให้ตัว App หลักเรียกใช้ได้ง่ายและไม่รก
@@ -3636,7 +3635,22 @@ const App = () => {
     });
     const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
     const [tempLocation, setTempLocation] = useState(null); // ไว้เก็บพิกัดชั่วคราวก่อนกดเซฟ
-    const [staffs] = useState(staffsData);
+    // 1. เพิ่ม state staffs ให้เป็นค่าว่างตอนเริ่มต้น
+    const [staffs, setStaffs] = useState([]);
+
+    // 2. ดึงข้อมูลแอดมินจาก Firebase (ใส่ไว้ใน useEffect เดียวกับที่ดึง refreshData)
+    useEffect(() => {
+        const fetchStaffs = async () => {
+            try {
+                const querySnapshot = await getDocs(collection(db, "staffs"));
+                const staffsList = querySnapshot.docs.map(doc => doc.data());
+                setStaffs(staffsList);
+            } catch (err) {
+                console.error("ดึงข้อมูลแอดมินจาก Firebase พลาด:", err);
+            }
+        };
+        fetchStaffs();
+    }, []);
     const [currentStaff, setCurrentStaff] = useState(null);
 
     // --- 3. ประวัติการทิ้งขยะ (เชื่อมโยงกับกราฟแท่ง) ---
