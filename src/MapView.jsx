@@ -32,11 +32,24 @@ const MapView = ({ currentLocation, members, findMyLocation, onPinLocation, isLo
         }).addTo(mapRef.current);
 
         // ให้เวลาแมพโหลดขนาดเสร็จแล้วค่อยบอกว่าพร้อม
-        setTimeout(() => {
-            mapRef.current.invalidateSize();
-            setIsMapReady(true); // 👈 พอแมพพร้อมแล้ว ค่อยให้ useEffect ตัวอื่นทำงาน
+        const timer = setTimeout(() => {
+            if (mapRef.current) {
+                mapRef.current.invalidateSize();
+                setIsMapReady(true);
+            }
         }, 500);
-    }, []);
+
+        // โค้ดทำลายแผนที่จะทำงานแค่ตอน "ปิดหน้าต่าง/ย้ายหน้าเว็บ" เท่านั้น
+        return () => {
+            clearTimeout(timer);
+            if (mapRef.current) {
+                mapRef.current.off();
+                mapRef.current.remove();
+                mapRef.current = null;
+                setIsMapReady(false);
+            }
+        };
+    }, []); // 🌟 จุดสำคัญ: ต้องแก้กลับเป็นวงเล็บว่าง [] เท่านั้นครับ!
 
     // 2. วาดหมุดสมาชิก (รอให้ isMapReady เป็น true)
     useEffect(() => {
