@@ -4227,7 +4227,7 @@ const App = () => {
                     </div>
                     <div className="flex flex-col text-white mt-1">
                         <span className="font-black text-xl tracking-tight leading-tight drop-shadow-sm">ธนาคารขยะบ้านป่าลาน</span>
-                        <span className="text-sm text-green-100 font-bold opacity-90 drop-shadow-sm mt-1">เทศบาลตำบลอุโมงค์</span>
+                        <span className="text-sm text-green-100 font-bold opacity-90 drop-shadow-sm mt-1">เทศบาลตำบลอุโมงค์ v1.0.1</span>
                     </div>
                 </div>
 
