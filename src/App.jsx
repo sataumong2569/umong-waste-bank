@@ -383,8 +383,15 @@ const DashboardView = ({ stats, villageData, wasteTypeData, members, setCurrentP
                                         tick={{ fill: '#64748b', fontSize: 16, fontWeight: 'bold' }}
                                     />
 
-                                    <RechartsTooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-
+                                    <RechartsTooltip
+                                        cursor={{ fill: '#f8fafc', opacity: 0.4 }}
+                                        contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.05)' }}
+                                        // 🌟 เพิ่มบรรทัด formatter นี้เข้าไปครับ
+                                        formatter={(value) => [
+                                            `${Number(value).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} กก.`,
+                                            'ทั้งหมด'
+                                        ]}
+                                    />
                                     {/*  3. ขยายตัวเลขด้านขวาเป็น 16 และปรับขนาดแท่ง (barSize) ให้หนาขึ้นรับกับฟอนต์ */}
                                     <Bar
                                         dataKey="amount"
@@ -3939,8 +3946,8 @@ const App = () => {
 
     // --- 4. คำนวณค่าการลดการปล่อยคาร์บอน (Carbon Stats) ---
     const carbonStats = useMemo(() => {
-        // ถ้าระบบว่างเปล่า ไม่มีสมาชิกเลย ให้ตอบ 0 ทันที (แก้ปัญหาเลขค้าง)
-        if (!members || members.length === 0) return 0;
+        // 🌟 1. เปลี่ยนจาก members เป็น allMembers เพื่อให้อิงจากข้อมูลทั้งหมดเสมอ
+        if (!allMembers || allMembers.length === 0) return 0;
 
         const FACTORS = {
             'พลาสติก': 1.0310,
@@ -3953,27 +3960,32 @@ const App = () => {
 
         let totalCarbon = 0;
 
-        // วนลูปเข้าไปดูข้อมูลของบ้านแต่ละหลัง
-        members.forEach(house => {
+        // 🌟 2. เปลี่ยนมาลูปผ่าน allMembers
+        allMembers.forEach(house => {
             const persons = house.familyMembers || [];
 
             if (persons.length > 0) {
                 // ถ้าระบบใหม่ (มีข้อมูลระดับบุคคล) ให้คำนวณจากขยะของทุกคนรวมกัน
                 persons.forEach(person => {
                     Object.entries(person.wasteData || {}).forEach(([type, weight]) => {
-                        totalCarbon += (Number(weight) * (FACTORS[type] || 0));
+                        // 🌟 เพิ่มการดักจับ: คำนวณเฉพาะประเภทขยะที่มีใน FACTORS เท่านั้น (ป้องกันเลขเพี้ยน)
+                        if (FACTORS[type] !== undefined) {
+                            totalCarbon += (Number(weight) || 0) * FACTORS[type];
+                        }
                     });
                 });
             } else {
-                // เผื่อไว้รองรับโครงสร้างบ้านแบบเก่า (กันพัง)
+                // เผื่อไว้รองรับโครงสร้างบ้านแบบเก่า
                 Object.entries(house.wasteData || {}).forEach(([type, weight]) => {
-                    totalCarbon += (Number(weight) * (FACTORS[type] || 0));
+                    if (FACTORS[type] !== undefined) {
+                        totalCarbon += (Number(weight) || 0) * FACTORS[type];
+                    }
                 });
             }
         });
 
         return totalCarbon;
-    }, [members]);
+    }, [allMembers]);
 
     // --- 5. สรุปสถิติ 5 กล่องหลักสำหรับหน้า Dashboard ---
     const stats = useMemo(() => {
@@ -4021,7 +4033,7 @@ const App = () => {
                 icon: <Database size={28} className="text-yellow-500" />
             },
             {
-                label: 'ขยะรวมทั้งระบบ',
+                label: 'ขยะรวมเดือนล่าสุด',
                 value: `${totalWeight.toLocaleString(undefined, { maximumFractionDigits: 2 })} กก.`,
                 icon: <TrendingUp size={28} className="text-yellow-500" />
             },
@@ -4037,8 +4049,16 @@ const App = () => {
                 icon: <Users size={28} className="text-yellow-500" />
             },
             {
-                label: 'ลดการปล่อยคาร์บอน (kgCO₂e)',
-                value: `${(Number(carbonStats) || 0).toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`,
+                label: 'ลดการปล่อยคาร์บอน', // ย้ายหน่วยมาไว้ที่ Label แทน
+                value: (
+                    <>
+                        {Number(carbonStats || 0).toLocaleString(undefined, {
+                            minimumFractionDigits: 1,
+                            maximumFractionDigits: 1
+                        })}
+                        <span className="text-xs font-bold text-slate-400 ml-1">kgCO₂e</span>
+                    </>
+                ),
                 icon: <Leaf size={28} className="text-emerald-500" />,
                 hasTooltip: true
             }
