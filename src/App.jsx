@@ -1,5 +1,4 @@
 // === ส่วนที่ 1: การนำเข้าไลบรารีและเครื่องมือต่างๆ (Imports) ===
-// ส่วนนี้คือการดึงความสามารถภายนอกมาใช้ในเว็บของเรา เช่น กราฟ, ไอคอน และตัวช่วยของ React
 import './App.css'; // นำเข้าสไตล์การตกแต่งจากไฟล์ CSS
 import webLogo from './img/Logo_umongcity_transparent.png';
 import React, { useState, useEffect, useMemo, useRef } from 'react'; // นำเข้าหัวใจหลักของ React (State, Effect, Memo)
@@ -14,12 +13,13 @@ import {
     Database, FileSpreadsheet, MapPin, Navigation, Info, AlertTriangle,
     Menu, X, ChevronRight, TrendingUp, Leaf, Wallet, PlusCircle, ChevronDown,
     Eye, EyeOff, Search, ChevronLeft, Home, Edit2, Save, Download, ShieldCheck,
-    Trash2, ShoppingCart, UserPlus, PackageOpen, Tags, ClipboardList, UploadCloud
+    Trash2, ShoppingCart, UserPlus, PackageOpen, Tags, ClipboardList, UploadCloud,
+    LayoutList
 } from 'lucide-react';
 import { db } from './firebase';
 import {
     collection, doc, getDocs, getDoc, setDoc, updateDoc, deleteDoc, addDoc,
-    query, where, orderBy, limit, increment, serverTimestamp, startAfter, onSnapshot
+    query, where, orderBy, limit, increment, serverTimestamp, startAfter, onSnapshot, runTransaction
 } from 'firebase/firestore';
 
 import MapView from './MapView.jsx';
@@ -262,12 +262,12 @@ const DashboardView = ({ stats, villageData, wasteTypeData, members, setCurrentP
                     <div className="modern-card bg-white p-6 rounded-3xl border border-slate-100 shadow-sm h-full flex flex-col">
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
-                                🏆 อันดับหมวดยอดเงินออมสูงสุด
+                                🏆 อันดับหมวดยอดเงินออม
                             </h3>
                         </div>
 
-                        {/* List Box แนวตั้ง */}
-                        <div className="flex flex-col gap-3 overflow-y-auto max-h-[460px] pr-2 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+                        {/* List Box แบบพรีเมียม (ดีไซน์ใหม่ กระชับพื้นที่ ไม่เบียด ไม่แหว่ง) */}
+                        <div className="flex flex-col gap-3 overflow-y-auto max-h-[460px] pr-2 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent pb-4">
                             {[...villageData]
                                 .map(v => {
                                     const vMembers = members ? members.filter(m => Number(m.villageId) === Number(v.id)) : [];
@@ -276,31 +276,35 @@ const DashboardView = ({ stats, villageData, wasteTypeData, members, setCurrentP
                                 })
                                 .sort((a, b) => b.realBalance - a.realBalance)
                                 .map((v, i) => (
-                                    // 🌟 1. เปลี่ยนโครงสร้างหลัก: ใช้ flex-col (แนวตั้งในจอเล็ก) และ sm:flex-row (แนวนอนในจอใหญ่)
-                                    <div key={v.id} className="bg-slate-50 border border-slate-100 p-3 sm:p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between hover:bg-emerald-50 hover:border-emerald-100 transition-all group shadow-sm gap-1 sm:gap-2">
+                                    <div key={v.id} className="group relative bg-white border border-slate-100 p-3 rounded-2xl flex items-center justify-between hover:border-emerald-300 hover:shadow-md transition-all duration-300 overflow-hidden gap-2">
 
-                                        {/* 🌟 2. ด้านบน (จอเล็ก) / ฝั่งซ้าย (จอใหญ่): เลขอันดับ + ชื่อหมวด */}
-                                        <div className="flex items-center gap-3 flex-1 min-w-0">
-                                            <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-black text-xs shrink-0
-                                ${i === 0 ? 'bg-amber-100 text-amber-600' :
-                                                    i === 1 ? 'bg-slate-200 text-slate-500' :
-                                                        i === 2 ? 'bg-orange-100 text-orange-600' : 'bg-white border text-slate-400'}`}>
+                                        {/* แถบสีเน้นอันดับด้านซ้าย */}
+                                        <div className={`absolute left-0 top-0 bottom-0 w-1 sm:w-1.5 ${i === 0 ? 'bg-amber-400' :
+                                            i === 1 ? 'bg-slate-300' :
+                                                i === 2 ? 'bg-orange-400' : 'bg-transparent'
+                                            }`}></div>
+
+                                        {/* ฝั่งซ้าย: วงกลมอันดับ + ชื่อหมวด */}
+                                        <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0 pl-2">
+                                            {/* เลขอันดับ */}
+                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-sm shrink-0 shadow-sm ${i === 0 ? 'bg-gradient-to-br from-amber-200 to-amber-400 text-amber-900' :
+                                                i === 1 ? 'bg-gradient-to-br from-slate-200 to-slate-300 text-slate-800' :
+                                                    i === 2 ? 'bg-gradient-to-br from-orange-200 to-orange-300 text-orange-900' :
+                                                        'bg-slate-50 text-slate-400 border border-slate-100'
+                                                }`}>
                                                 {i + 1}
                                             </div>
-                                            <span className="font-bold text-sm sm:text-base text-slate-800 group-hover:text-emerald-700 transition-colors sm:truncate">
+
+                                            {/* ชื่อหมวด (ถ้ายาวให้ปัดขึ้นบรรทัดใหม่ ไม่ใช้การตัดคำ) */}
+                                            <h4 className="font-bold text-slate-700 text-sm leading-snug group-hover:text-emerald-700 transition-colors line-clamp-2">
                                                 {v.name}
-                                            </span>
+                                            </h4>
                                         </div>
 
-                                        {/* ด้านล่าง (จอเล็ก) / ฝั่งขวา (จอใหญ่): ยอดเงิน */}
-                                        {/* pl-11 คือการเว้นวรรคให้ตรงกับข้อความด้านบน, sm:pl-2 คือเอาการเว้นวรรคออกเมื่อเป็นจอใหญ่ */}
-                                        <div className="flex flex-row sm:flex-col items-baseline sm:items-end pl-11 sm:pl-2 shrink-0">
-                                            <span className="text-[10px] sm:hidden font-bold text-slate-400 uppercase mr-2">ยอดสะสม:</span>
-                                            <div className="flex items-baseline gap-1">
-                                                <span className="font-black text-emerald-600 font-mono text-base sm:text-lg tracking-tight">
-                                                    ฿{v.realBalance.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                                                </span>
-                                                <span className="hidden xl:inline-block text-[10px] font-bold text-emerald-500/70 uppercase">บาท</span>
+                                        {/* ฝั่งขวา: ยอดเงิน (ฟอนต์ใหญ่ ป้ายสีเขียว) */}
+                                        <div className="text-right shrink-0">
+                                            <div className="font-black text-emerald-600 font-mono text-base sm:text-lg tracking-tight bg-emerald-50 px-2.5 py-1 rounded-xl border border-emerald-100/50">
+                                                ฿{v.realBalance.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                             </div>
                                         </div>
 
@@ -507,17 +511,33 @@ const MemoizedDashboardView = React.memo(DashboardView);
 // =========================================================================
 // 🪙 หน้าจอราคารับซื้อขยะ (PriceView) โฉมใหม่ เชื่อม Cloud + เพิ่มลดขยะได้
 // =========================================================================
-const PriceView = ({ isLoggedIn, isEditing, setIsEditing, setCurrentPage, globalPrices, refreshData, db }) => {
+const PriceView = ({ isLoggedIn, isEditing, setIsEditing, setCurrentPage, globalPrices, refreshData, db, logAdminAction }) => {
     // 1. ใช้ globalPrices จาก App.jsx เป็นสารตั้งต้น
     const [prices, setPrices] = useState(globalPrices || []);
     const [tempPrices, setTempPrices] = useState({});
     const [calcWeights, setCalcWeights] = useState({});
-    const [lastUpdated, setLastUpdated] = useState(() => localStorage.getItem('recycle_prices_updated_date') || 'ยังไม่มีการระบุวันที่');
+    const [lastUpdated, setLastUpdated] = useState('กำลังโหลด...');
 
-    // 2. ซิงค์ข้อมูลทุกครั้งที่ globalPrices เปลี่ยนแปลง
     useEffect(() => {
         setPrices(globalPrices || []);
     }, [globalPrices]);
+
+    //  2. ดึงวันที่อัปเดตล่าสุดจาก Firebase โดยตรง
+    useEffect(() => {
+        const fetchLastUpdated = async () => {
+            try {
+                const snap = await getDoc(doc(db, "settings", "waste_prices"));
+                if (snap.exists() && snap.data().lastUpdated) {
+                    setLastUpdated(snap.data().lastUpdated);
+                } else {
+                    setLastUpdated('ยังไม่มีการระบุวันที่');
+                }
+            } catch (error) {
+                setLastUpdated('ไม่สามารถดึงข้อมูลได้');
+            }
+        };
+        fetchLastUpdated();
+    }, [db]);
 
     // 3. ฟังก์ชันเตรียมตัวแก้ไข
     const handleStartEdit = () => {
@@ -535,17 +555,25 @@ const PriceView = ({ isLoggedIn, isEditing, setIsEditing, setCurrentPage, global
         }));
 
         try {
-            // ยิงขึ้น Firestore
-            await setDoc(doc(db, "settings", "waste_prices"), { items: updatedPrices }, { merge: true });
-
-            // อัปเดตวันที่ล่าสุด
+            // 🌟 1. สร้างวันที่ก่อนเลย จะได้เอาไปส่งขึ้น Cloud ทัน
             const now = new Date();
             const ThaiMonths = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
             const dateString = `${now.getDate()} ${ThaiMonths[now.getMonth()]} ${now.getFullYear() + 543}`;
-            setLastUpdated(dateString);
-            localStorage.setItem('recycle_prices_updated_date', dateString);
 
+            // 🌟 2. ยิงขึ้น Firestore (ใส่ lastUpdated เข้าไปรวมกับ items เลย)
+            await setDoc(doc(db, "settings", "waste_prices"), {
+                items: updatedPrices,
+                lastUpdated: dateString // ส่งวันที่ขึ้น Cloud ตรงนี้!
+            }, { merge: true });
+
+            if (typeof logAdminAction === 'function') {
+                logAdminAction("ได้ทำการอัปเดตปรับเปลี่ยนมูลค่าราคากลางและประเภทขยะรีไซเคิลประจำเดือนบนระบบ Cloud");
+            }
+
+            // 🌟 3. อัปเดตหน้าจอทันที (ลบ localStorage ทิ้งไปเลย เพราะเราใช้ Cloud แทนแล้ว)
+            setLastUpdated(dateString);
             setIsEditing(false);
+
             alert("💾 บันทึกราคากลางและประเภทขยะขึ้นระบบ Cloud สำเร็จ!");
             if (refreshData) refreshData(); // สั่งให้ App โหลดข้อมูลใหม่
         } catch (err) {
@@ -601,7 +629,7 @@ const PriceView = ({ isLoggedIn, isEditing, setIsEditing, setCurrentPage, global
                     <div className="flex gap-2 flex-wrap sm:flex-nowrap">
                         {setCurrentPage && (
                             <button onClick={() => setCurrentPage('admin')} className="px-4 py-2.5 bg-slate-100 text-slate-600 rounded-xl font-bold text-sm hover:bg-slate-200 transition shadow-sm whitespace-nowrap">
-                                ← กลับแผงจัดการ
+                                ← ย้อนกลับ
                             </button>
                         )}
                         {isEditing ? (
@@ -754,7 +782,7 @@ const EditMemberModal = ({ member, villageData, onSave, onDelete, onClose, globa
     const [inputWeight, setInputWeight] = useState('');
     const [showConfirm, setShowConfirm] = useState(false);
 
-    const CARBON_MULTIPLIERS = { 'พลาสติกรวม': 1.0310, 'กระดาษ': 5.6735, 'ขวดแก้วรวม': 0.2760, 'อลูมิเนียม': 9.1270, 'โลหะผสม': 4.3910, 'เหล็กรวม': 1.8320, 'พลาสติก': 1.0310, 'แก้ว': 0.2760, 'เหล็ก': 1.8320 };
+    const CARBON_MULTIPLIERS = { 'พลาสติก': 1.0310, 'กระดาษ': 5.6735, 'ขวดแก้ว': 0.2760, 'อลูมิเนียม': 9.1270, 'โลหะผสม': 4.3910, 'เหล็ก': 1.8320, 'พลาสติก': 1.0310, 'แก้ว': 0.2760, 'เหล็ก': 1.8320 };
 
     useEffect(() => {
         const L = window.L;
@@ -2054,164 +2082,281 @@ const ManageBalanceView = ({ members, villages, setMembers, db, logAdminAction, 
     </>
     );
 };
-// === หน้าจอแสดงประวัติการทำรายการ (HistoryView) โฉมใหม่ แบบ Timeline ===
-const HistoryView = ({ transactions, villages, db, refreshData, setCurrentPage }) => {
+
+// === หน้าจอแสดงประวัติการทำรายการ (HistoryView) โฉมใหม่ แบบตารางรายเดือน ===
+const HistoryView = ({ transactions, villages, db, refreshData, setCurrentPage, globalPrices }) => {
     const [selectedCategory, setSelectedCategory] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
-    //  เปลี่ยนชื่อตัวแปรหน้าตารางเป็น tablePage เพื่อไม่ให้ตีกับหน้าเว็บหลัก
     const [tablePage, setTablePage] = useState(1);
-    const itemsPerPage = 15;
+    const itemsPerPage = 20;
 
-    // กรองข้อมูลตามหมวดหมู่ และ คำค้นหา
-    const filteredTx = (transactions || []).filter(tx => {
-        // 🌟 เพิ่ม .trim() เพื่อลบช่องว่างที่อาจทำให้คอมพิวเตอร์มองว่าเป็นคนละคำ
-        const matchCategory = selectedCategory === 'all' || String(tx.category).trim() === String(selectedCategory).trim();
-        const matchSearch = String(tx.houseNo).includes(searchTerm.trim()) ||
-            String(tx.personName || '').toLowerCase().includes(searchTerm.toLowerCase().trim());
-        return matchCategory && matchSearch;
-    });
+    const wasteTypes = React.useMemo(() => {
+        return globalPrices && globalPrices.length > 0
+            ? globalPrices.map(p => p.type)
+            : [];
+    }, [globalPrices])
+
+    React.useEffect(() => {
+        setTablePage(1);
+    }, [selectedCategory, searchTerm]);
+
+    // 🌟 1. ดึงเฉพาะเดือนนี้ และมัดรวมข้อมูลตาม "หมวด_บ้านเลขที่_ชื่อสมาชิก"
+    const aggregatedTx = React.useMemo(() => {
+        const now = new Date();
+        const ThaiMonths = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+        const currentMonthStr = ThaiMonths[now.getMonth()];
+        const currentYearStr = String(now.getFullYear() + 543);
+
+        const map = new Map();
+
+        (transactions || []).forEach(tx => {
+            if (!tx.date) return;
+
+            // กรองเอาเฉพาะเดือนปัจจุบัน
+            const isCurrentMonth = tx.date.includes(currentMonthStr) && tx.date.includes(currentYearStr);
+            if (!isCurrentMonth) return;
+
+            const category = tx.category || 'ทั่วไป';
+            const houseNo = tx.houseNo || 'ไม่ระบุ';
+            const personName = tx.personName || 'ไม่ระบุชื่อ';
+
+            // สร้างกุญแจมัดรวม: ถ้า 3 อย่างนี้เหมือนกัน ถือว่าเป็นคนเดียวกัน
+            const key = `${category}_${houseNo}_${personName}`;
+
+            if (!map.has(key)) {
+                map.set(key, {
+                    id: key,
+                    rawIds: [tx.id], // 🗝️ แอบเก็บ ID ดิบทุกอันไว้ เพื่อให้รู้ว่าถือกดลบแถวนี้ ต้องไปลบกี่บิล
+                    category: category,
+                    houseNo: houseNo,
+                    personName: personName,
+                    totalBalance: Number(tx.addedBalance) || 0,
+                    totalCredit: Number(tx.creditAdded) || 0,
+                    wasteData: { ...(tx.wasteData || {}) },
+                    latestDate: tx.date,
+                    latestTime: tx.time
+                });
+            } else {
+                // ถ้ามีชื่อนี้ในตารางแล้ว ให้บวกยอดทบเข้าไป
+                const existing = map.get(key);
+                existing.rawIds.push(tx.id);
+                existing.totalBalance += (Number(tx.addedBalance) || 0);
+                existing.totalCredit += (Number(tx.creditAdded) || 0);
+
+                Object.entries(tx.wasteData || {}).forEach(([wType, wWeight]) => {
+                    existing.wasteData[wType] = (Number(existing.wasteData[wType]) || 0) + (Number(wWeight) || 0);
+                });
+
+                // อัปเดตเวลาล่าสุดที่มาฝาก
+                existing.latestDate = tx.date;
+                existing.latestTime = tx.time;
+            }
+        });
+
+        return Array.from(map.values());
+    }, [transactions]);
+
+    // 🌟 2. นำข้อมูลที่มัดรวมแล้ว (aggregatedTx) มาค้นหา/กรอง/เรียงลำดับ
+    const filteredTx = React.useMemo(() => {
+        let filtered = aggregatedTx.filter(tx => {
+            const matchCategory = selectedCategory === 'all' || String(tx.category).trim() === String(selectedCategory).trim();
+            const matchSearch = String(tx.houseNo).includes(searchTerm.trim()) ||
+                String(tx.personName).toLowerCase().includes(searchTerm.toLowerCase().trim());
+            return matchCategory && matchSearch;
+        });
+
+        filtered.sort((a, b) => {
+            const numA = parseInt(String(a.category).match(/\d+/) || [999]);
+            const numB = parseInt(String(b.category).match(/\d+/) || [999]);
+            if (numA !== numB) return numA - numB;
+            return String(a.houseNo).localeCompare(String(b.houseNo), undefined, { numeric: true });
+        });
+
+        return filtered;
+    }, [aggregatedTx, selectedCategory, searchTerm]);
 
     const totalPages = Math.max(1, Math.ceil(filteredTx.length / itemsPerPage));
     const currentTx = filteredTx.slice((tablePage - 1) * itemsPerPage, tablePage * itemsPerPage);
 
-    // รีเซ็ตหน้าตารางเมื่อเปลี่ยนคำค้นหา
-    React.useEffect(() => { setTablePage(1); }, [selectedCategory, searchTerm]);
+    //  3. สรุปผลรวมให้ตาราง
+    const totals = React.useMemo(() => {
+        let money = 0, carbon = 0, weight = 0;
+        const wastes = {};
+        wasteTypes.forEach(t => wastes[t] = 0); // ดัก Error toFixed
+        filteredTx.forEach(tx => {
+            money += tx.totalBalance;
+            carbon += tx.totalCredit;
+            wasteTypes.forEach(type => {
+                const w = Number(tx.wasteData?.[type]) || 0;
+                wastes[type] += w;
+                weight += w;
+            });
+        });
+        return { money, carbon, weight, wastes };
+    }, [filteredTx]);
 
     const handleExportExcel = () => {
-        const headers = ['ลำดับ', 'วันที่', 'เวลา', 'ผู้ดำเนินการ', 'หมวดหมู่', 'บ้านเลขที่', 'สมาชิกผู้ฝาก', 'ยอดเงินฝากเพิ่ม (บาท)', 'คาร์บอนที่ได้ (kgCO2e)', 'พลาสติก (กก.)', 'กระดาษ (กก.)', 'แก้ว (กก.)', 'อลูมิเนียม (กก.)', 'โลหะผสม (กก.)', 'เหล็ก (กก.)'];
-        const dataRows = filteredTx.map((tx, i) => [
-            i + 1, tx.date, tx.time, tx.operator || 'ไม่ระบุ', tx.category || 'ไม่ระบุ', tx.houseNo, tx.personName || 'ไม่ระบุชื่อ',
-            (Number(tx.addedBalance) || 0).toFixed(2),
-            (Number(tx.creditAdded) || 0).toFixed(4),
-            (Number(tx.wasteData?.['พลาสติก']) || 0).toFixed(2),
-            (Number(tx.wasteData?.['กระดาษ']) || 0).toFixed(2),
-            (Number(tx.wasteData?.['แก้ว']) || 0).toFixed(2),
-            (Number(tx.wasteData?.['อลูมิเนียม']) || 0).toFixed(2),
-            (Number(tx.wasteData?.['โลหะผสม']) || 0).toFixed(2)
-                (Number(tx.wasteData?.['เหล็ก']) || 0).toFixed(2)
-        ]);
+        const headers = ['หมวดหมู่', 'บ้านเลขที่', 'ชื่อสมาชิก', 'อัปเดตล่าสุด', ...wasteTypes, 'รวมน้ำหนัก (กก.)', 'ยอดเงิน (บาท)', 'คาร์บอน (kgCO2e)'];
+        const dataRows = filteredTx.map(tx => {
+            let rowWeight = 0;
+            const wasteDataRow = wasteTypes.map(type => {
+                const w = Number(tx.wasteData?.[type]) || 0;
+                rowWeight += w;
+                return w > 0 ? w : '';
+            });
 
-        const rows = [headers, ...dataRows];
+            return [
+                tx.category, tx.houseNo, tx.personName, `${tx.latestDate} ${tx.latestTime}`,
+                ...wasteDataRow,
+                rowWeight.toFixed(2),
+                tx.totalBalance.toFixed(2),
+                tx.totalCredit.toFixed(4)
+            ];
+        });
+
+        const totalRow = [
+            'รวมยอดทั้งหมด (เดือนนี้)', '', '', '',
+            ...wasteTypes.map(type => totals.wastes[type] > 0 ? totals.wastes[type].toFixed(2) : ''),
+            totals.weight.toFixed(2),
+            totals.money.toFixed(2),
+            totals.carbon.toFixed(4)
+        ];
+
+        const rows = [headers, ...dataRows, totalRow];
         const csvContent = "\uFEFF" + rows.map(e => e.map(item => `"${String(item).replace(/"/g, '""')}"`).join(",")).join("\n");
         const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
         const link = document.createElement("a");
         link.href = URL.createObjectURL(blob);
-        const fileName = selectedCategory === 'all' ? 'ประวัติฝากขยะทุกหมวด' : `ประวัติฝากขยะ_${selectedCategory}`;
-        link.download = `${fileName}_${new Date().toISOString().split('T')[0]}.csv`;
+        link.download = `ประวัติฝากขยะรายเดือน_${selectedCategory}_${new Date().toISOString().slice(0, 10)}.csv`;
         link.click();
     };
 
+    // 🌟 4. แก้ให้การลบข้อมูล ลบจากบิลดิบทั้งหมดที่แอบเก็บไว้
     const handleClearHistory = async () => {
-        if (!confirm(`⚠️ ยืนยันการ "ล้างประวัติการฝาก" ของ ${selectedCategory === 'all' ? 'ทุกหมวดหมู่' : selectedCategory} ออกจากฐานข้อมูล?\n(ยอดเงินและคาร์บอนจริงของสมาชิกจะไม่หายไป แนะนำให้ Export ไว้ก่อน)`)) return;
+        if (!confirm(`⚠️ ยืนยันการ "ล้างประวัติการฝาก" ของเดือนนี้ออกจากฐานข้อมูล?\n\n(แนะนำให้กดปุ่ม Export Excel เพื่อเก็บรายงานเข้าเครื่องคอมพิวเตอร์ไว้ก่อนลบข้อมูล)`)) return;
 
         try {
-            for (const tx of filteredTx) {
-                await deleteDoc(doc(db, "waste_transactions", String(tx.id)));
+            for (const txGroup of filteredTx) {
+                for (const rawId of txGroup.rawIds) {
+                    await deleteDoc(doc(db, "waste_transactions", String(rawId)));
+                }
             }
-            alert("🗑️ ล้างประวัติบนระบบ Cloud สำเร็จ");
+            alert("🗑️ ล้างประวัติของเดือนปัจจุบันออกจากระบบสำเร็จ");
             if (typeof refreshData === 'function') refreshData();
         } catch (error) {
             console.error("Error clearing DB:", error);
-            alert("❌ ลบประวัติผิดพลาด");
+            alert("❌ เกิดข้อผิดพลาดในการลบข้อมูล");
         }
     };
-
+    // 🌟 ดึงชื่อเดือนและปีปัจจุบันมาแสดงผล
+    const now = new Date();
+    const fullThaiMonths = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+    const currentMonthDisplay = `${fullThaiMonths[now.getMonth()]} ${now.getFullYear() + 543}`;
     return (
-        <div className="space-y-6 animate-in fade-in duration-300 text-slate-700">
-            <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="space-y-4 animate-in fade-in duration-500 h-full flex flex-col p-4">
+
+            {/* Header ควบคุมและปุ่มคำสั่ง */}
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex justify-between items-center shrink-0 flex-wrap gap-4">
                 <div>
-                    <h2 className="font-bold text-2xl text-slate-800 flex items-center gap-2"><History className="text-purple-500" /> ประวัติฝากขยะและเงิน</h2>
-                    <p className="text-sm text-slate-500 mt-1">บันทึกการทำรายการล่าสุด (ค้นหาและดูย้อนหลังได้)</p>
+                    <h2 className="font-black text-2xl text-slate-800 tracking-tight">ตารางประวัติฝาก (เดือน{currentMonthDisplay})</h2>
+                    <p className="text-sm text-slate-500 font-bold mt-1">แสดงประวัติการบันทึกขยะแยกตามรายรายการธุรกรรมจริง</p>
                 </div>
-                <div className="flex gap-2 w-full md:w-auto flex-wrap sm:flex-nowrap">
-                    {/*  ปุ่มกลับหน้าแอดมิน */}
-                    {setCurrentPage && <button onClick={() => setCurrentPage('admin')} className="flex-1 md:flex-none bg-slate-100 text-slate-600 hover:bg-slate-200 px-4 py-2.5 rounded-xl font-bold transition shadow-sm text-sm whitespace-nowrap">← กลับแผงจัดการ</button>}
-                    {filteredTx.length > 0 && <button onClick={handleExportExcel} className="flex-1 md:flex-none bg-emerald-50 text-emerald-700 border border-emerald-200 px-4 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-emerald-600 hover:text-white transition shadow-sm text-sm"><Download size={16} /> Export</button>}
-                    {filteredTx.length > 0 && <button onClick={handleClearHistory} className="flex-1 md:flex-none bg-red-50 text-red-600 border border-red-200 px-4 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-red-600 hover:text-white transition shadow-sm text-sm">🗑️ ล้างข้อมูล</button>}
-                </div>
-            </div>
-
-            {/* แถบตัวกรองและค้นหา */}
-            <div className="flex flex-col sm:flex-row gap-4">
-                <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} className="bg-white border border-slate-200 p-3 rounded-2xl text-sm font-bold outline-none w-full sm:w-64 cursor-pointer shadow-sm focus:border-purple-400">
-                    <option value="all">📂 ดูประวัติทุกหมวดหมู่</option>
-                    {villages && villages.map((v, i) => <option key={i} value={v.name}>{v.name}</option>)}
-                </select>
-                <div className="relative flex-1">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
-                    <input
-                        type="text" placeholder="ค้นหาชื่อผู้ฝาก หรือ บ้านเลขที่..."
-                        value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full bg-white border border-slate-200 pl-11 pr-4 py-3 rounded-2xl text-sm font-bold outline-none shadow-sm focus:border-purple-400"
-                    />
-                </div>
-            </div>
-
-            {/* รายการประวัติ */}
-            <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden min-h-[400px] flex flex-col">
-                <div className="flex-grow divide-y divide-slate-100">
-                    {currentTx.length > 0 ? currentTx.map((tx) => {
-                        const hasMoney = Number(tx.addedBalance) > 0;
-                        const hasCarbon = Number(tx.creditAdded) > 0;
-
-                        return (
-                            <div key={tx.id} className="p-4 sm:p-5 hover:bg-slate-50 transition-colors flex flex-col md:flex-row gap-4 md:items-center">
-                                <div className="w-full md:w-1/4 shrink-0 flex flex-col gap-1">
-                                    <span className="text-xs font-black text-purple-600 bg-purple-50 w-fit px-2 py-1 rounded-md">{tx.date}</span>
-                                    <span className="font-bold text-slate-700">{tx.time}</span>
-                                    <span className="text-[10px] font-bold text-slate-400 mt-1">รับเรื่องโดย: {tx.operator}</span>
-                                </div>
-
-                                <div className="w-full md:w-2/4 flex flex-col gap-2 border-l-2 border-slate-100 pl-0 md:pl-4">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                        <span className="bg-blue-600 text-white text-xs font-bold px-2 py-0.5 rounded-md shadow-sm">
-                                            บ้าน {tx.houseNo}
-                                        </span>
-                                        <span className="font-black text-slate-800 text-base">{tx.personName || 'ไม่ระบุชื่อ'}</span>
-                                        <span className="text-[10px] text-slate-400 font-bold border border-slate-200 px-1.5 rounded">{tx.category}</span>
-                                    </div>
-
-                                    <div className="flex flex-wrap gap-1.5 mt-1">
-                                        {['พลาสติก', 'กระดาษ', 'แก้ว', 'อลูมิเนียม', 'โลหะผสม', 'เหล็ก'].map(type => Number(tx.wasteData?.[type]) > 0 && (
-                                            <span key={type} className="bg-white border border-slate-200 px-2 py-1 rounded-lg text-[11px] font-bold text-slate-600 flex items-center gap-1 shadow-sm">
-                                                <span className="w-1.5 h-1.5 bg-blue-400 rounded-full"></span>
-                                                {type}: <span className="text-blue-600">{Number(tx.wasteData[type]).toFixed(2)} กก.</span>
-                                            </span>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                <div className="w-full md:w-1/4 flex flex-row md:flex-col items-center md:items-end justify-end gap-2 shrink-0">
-                                    {hasMoney && (
-                                        <div className="bg-amber-50 border border-amber-200 text-amber-700 px-3 py-1.5 rounded-xl text-right shadow-sm flex items-center gap-1.5">
-                                            <span className="text-[10px] font-bold uppercase">ยอดเงิน</span>
-                                            <span className="font-black text-base">+฿{Number(tx.addedBalance).toLocaleString()}</span>
-                                        </div>
-                                    )}
-                                    {hasCarbon && (
-                                        <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-3 py-1.5 rounded-xl text-right shadow-sm flex items-center gap-1.5">
-                                            <span className="text-[10px] font-bold uppercase">คาร์บอน</span>
-                                            <span className="font-black text-sm">+{Number(tx.creditAdded).toFixed(4)}</span>
-                                        </div>
-                                    )}
-                                    {!hasMoney && !hasCarbon && <span className="text-xs text-slate-400 font-bold">ไม่มีการรับยอด</span>}
-                                </div>
-                            </div>
-                        )
-                    }) : (
-                        <div className="text-center text-slate-400 py-16 flex flex-col items-center">
-                            <History size={48} className="mb-3 opacity-20" />
-                            <p className="font-bold">ไม่พบประวัติการฝากที่ค้นหา</p>
-                        </div>
+                <div className="flex gap-2 w-full sm:w-auto justify-end">
+                    {setCurrentPage && <button onClick={() => setCurrentPage('admin')} className="bg-slate-100 text-slate-600 hover:bg-slate-200 px-5 py-2.5 rounded-xl font-bold text-sm transition whitespace-nowrap">← ย้อนกลับ</button>}
+                    {filteredTx.length > 0 && (
+                        <>
+                            <button onClick={handleExportExcel} className="bg-emerald-600 text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-emerald-700 transition whitespace-nowrap flex items-center justify-center gap-2">
+                                <Download size={16} /> Export CSV
+                            </button>
+                            <button onClick={handleClearHistory} className="bg-rose-50 text-rose-600 border border-rose-200 px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-rose-600 hover:text-white transition whitespace-nowrap flex items-center justify-center gap-2">
+                                <Trash2 size={16} /> ล้างข้อมูลเดือนนี้
+                            </button>
+                        </>
                     )}
                 </div>
+            </div>
 
-                {/* Pagination */}
+            {/* แถบตัวกรองการแสดงผลตาราง */}
+            <div className="flex gap-2 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm items-center shrink-0 flex-wrap">
+                <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} className="p-3 rounded-xl border border-slate-200 text-sm font-bold w-full sm:w-48 bg-slate-50 cursor-pointer outline-none">
+                    <option value="all">ทุกหมวดหมู่</option>
+                    {villages?.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
+                </select>
+                <input placeholder="ค้นหาชื่อ หรือ บ้านเลขที่..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="p-3 rounded-xl border border-slate-200 text-sm flex-1 font-bold outline-none w-full" />
+            </div>
+
+            {/* โครงสร้างพื้นที่ตารางแสดงผลหลัก */}
+            <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+                <div className="flex-1 overflow-auto scrollbar-thin">
+                    <table className="w-full text-left border-collapse min-w-max">
+                        <thead className="bg-slate-100 text-[11px] uppercase font-black text-slate-600 sticky top-0 z-20">
+                            <tr>
+                                <th className="p-4 sticky left-0 bg-slate-100 z-30 shadow-[2px_0_5px_rgba(0,0,0,0.02)]">หมวด / บ้าน / ชื่อ</th>
+                                <th className="p-4 text-right">นน.รวม</th>
+                                <th className="p-4 text-right">ยอดเงิน</th>
+                                <th className="p-4 text-right">คาร์บอน</th>
+                                {wasteTypes.map(t => <th key={t} className="p-4 text-center">{t}</th>)}
+                            </tr>
+                        </thead>
+                        <tbody className="text-sm divide-y divide-slate-100">
+                            {currentTx.length > 0 ? currentTx.map((tx, i) => {
+                                let rowWeight = 0;
+                                wasteTypes.forEach(t => rowWeight += Number(tx.wasteData?.[t]) || 0);
+
+                                return (
+                                    <tr key={i} className="hover:bg-blue-50/50 transition-colors">
+                                        <td className="p-4 sticky left-0 bg-white border-r border-slate-50 min-w-[240px] z-10 shadow-[2px_0_5px_rgba(0,0,0,0.02)]">
+                                            <div className="font-black text-purple-700 text-[10px] bg-purple-50 w-fit px-2 py-0.5 rounded border border-purple-100 mb-1">{tx.category || 'ทั่วไป'}</div>
+                                            <div className="font-black text-slate-800 text-base">บ้าน {tx.houseNo}</div>
+                                            <div className="text-slate-600 text-sm mt-0.5 truncate max-w-[200px]">{tx.personName || 'ไม่ระบุชื่อ'}</div>
+                                            <div className="text-[10px] text-slate-400 font-bold mt-1">🕒 {tx.date} {tx.time}</div>
+                                        </td>
+                                        <td className="p-4 text-right font-black text-slate-700 bg-blue-50/30">
+                                            {rowWeight > 0 ? rowWeight.toFixed(2) : '-'}
+                                        </td>
+                                        <td className="p-4 text-right font-black text-amber-700 bg-amber-50/30">{Number(tx.addedBalance) > 0 ? `฿${Number(tx.addedBalance).toFixed(2)}` : '-'}</td>
+                                        <td className="p-4 text-right font-black text-emerald-700 bg-emerald-50/30">{Number(tx.creditAdded) > 0 ? `+${Number(tx.creditAdded).toFixed(4)}` : '-'}</td>
+                                        {wasteTypes.map(t => (
+                                            <td key={t} className={`p-4 text-center font-bold ${Number(tx.wasteData?.[t]) > 0 ? 'text-blue-700 bg-blue-50/50' : 'text-slate-300'}`}>
+                                                {Number(tx.wasteData?.[t]) > 0 ? Number(tx.wasteData?.[t]).toFixed(2) : '-'}
+                                            </td>
+                                        ))}
+                                    </tr>
+                                )
+                            }) : (
+                                <tr>
+                                    <td colSpan={wasteTypes.length + 4} className="py-20 text-center text-slate-400 font-bold bg-slate-50/50 text-base">
+                                        ไม่พบข้อมูลประวัติฝากขยะในเดือนนี้
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                        {currentTx.length > 0 && (
+                            <tfoot className="bg-slate-800 text-white font-black text-sm sticky bottom-0 z-20 shadow-[0_-4px_10px_rgba(0,0,0,0.1)]">
+                                <tr>
+                                    <td className="p-4 sticky left-0 bg-slate-800 z-30">สรุปยอด (หมวดที่แสดง)</td>
+                                    <td className="p-4 text-right text-blue-300">{totals.weight.toFixed(2)}</td>
+                                    <td className="p-4 text-right text-amber-400">฿{totals.money.toFixed(2)}</td>
+                                    <td className="p-4 text-right text-emerald-400">{totals.carbon.toFixed(4)}</td>
+                                    {wasteTypes.map(t => (
+                                        <td key={t} className={`p-4 text-center ${totals.wastes[t] > 0 ? 'text-white' : 'text-slate-500'}`}>
+                                            {totals.wastes[t] > 0 ? totals.wastes[t].toFixed(2) : '-'}
+                                        </td>
+                                    ))}
+                                </tr>
+                            </tfoot>
+                        )}
+                    </table>
+                </div>
+
                 {filteredTx.length > itemsPerPage && (
-                    <div className="bg-slate-50 border-t border-slate-100 p-4 flex items-center justify-between">
-                        <button onClick={() => setTablePage(prev => Math.max(prev - 1, 1))} disabled={tablePage === 1} className="px-4 py-2 bg-white border rounded-xl font-bold text-sm text-slate-600 disabled:opacity-50 hover:bg-slate-100 transition-colors">ก่อนหน้า</button>
-                        <span className="font-bold text-slate-500 text-sm">หน้า {tablePage}/{totalPages}</span>
-                        <button onClick={() => setTablePage(prev => Math.min(prev + 1, totalPages))} disabled={tablePage === totalPages} className="px-4 py-2 bg-white border rounded-xl font-bold text-sm text-slate-600 disabled:opacity-50 hover:bg-slate-100 transition-colors">ถัดไป</button>
+                    <div className="bg-white border-t border-slate-100 p-3 flex items-center justify-between shrink-0">
+                        <span className="text-xs font-bold text-slate-400 ml-2 hidden sm:block">แสดงผล {currentTx.length} จาก {filteredTx.length} รายการ</span>
+                        <div className="flex items-center gap-2 w-full sm:w-auto justify-center">
+                            <button onClick={() => setTablePage(prev => Math.max(prev - 1, 1))} disabled={tablePage === 1} className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg font-bold text-xs text-slate-600 disabled:opacity-40 hover:bg-slate-100 transition-colors">◀ ก่อนหน้า</button>
+                            <span className="font-black text-slate-600 text-xs px-3">หน้า {tablePage} / {totalPages}</span>
+                            <button onClick={() => setTablePage(prev => Math.min(prev + 1, totalPages))} disabled={tablePage === totalPages} className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg font-bold text-xs text-slate-600 disabled:opacity-40 hover:bg-slate-100 transition-colors">ถัดไป ▶</button>
+                        </div>
                     </div>
                 )}
             </div>
@@ -2269,7 +2414,7 @@ const AdminLogsView = ({ adminLogs, db, refreshData, setCurrentPage }) => {
         <div className="space-y-6 animate-in fade-in duration-300 text-slate-700">
             <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                    <h2 className="font-bold text-2xl text-slate-800 flex items-center gap-2"><FileSpreadsheet className="text-red-500" /> ประวัติกิจกรรมแอดมิน</h2>
+                    <h2 className="font-bold text-2xl text-slate-800 flex items-center gap-2"><FileSpreadsheet className="text-red-500" /> ประวัติกิจกรรมการทำงาน</h2>
                     <p className="text-sm text-slate-500 mt-1">ตรวจสอบการบันทึก ลบ หรือแก้ไขข้อมูลของเจ้าหน้าที่</p>
                 </div>
                 <div className="flex gap-2 w-full md:w-auto flex-wrap sm:flex-nowrap">
@@ -2331,6 +2476,254 @@ const AdminLogsView = ({ adminLogs, db, refreshData, setCurrentPage }) => {
                         <button onClick={() => setTablePage(prev => Math.max(prev - 1, 1))} disabled={tablePage === 1} className="px-4 py-2 bg-white border rounded-xl font-bold text-sm text-slate-600 disabled:opacity-50 hover:bg-slate-100 transition-colors">ก่อนหน้า</button>
                         <span className="font-bold text-slate-500 text-sm">หน้า {tablePage}/{totalPages}</span>
                         <button onClick={() => setTablePage(prev => Math.min(prev + 1, totalPages))} disabled={tablePage === totalPages} className="px-4 py-2 bg-white border rounded-xl font-bold text-sm text-slate-600 disabled:opacity-50 hover:bg-slate-100 transition-colors">ถัดไป</button>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+const MemberSummaryView = ({ members, villages, setCurrentPage, globalPrices }) => {
+    const [selectedCategory, setSelectedCategory] = useState('all');
+    const [searchTerm, setSearchTerm] = useState('');
+    const [tablePage, setTablePage] = useState(1);
+    const itemsPerPage = 20;
+
+    const [showExportModal, setShowExportModal] = useState(false);
+    const [exportSelectedCategories, setExportSelectedCategories] = useState(['all']);
+
+    const wasteTypes = React.useMemo(() => {
+        return globalPrices && globalPrices.length > 0
+            ? globalPrices.map(p => p.type)
+            : [];
+    }, [globalPrices]);
+
+    // สั่งให้เด้งกลับไปหน้า 1 ทันทีเมื่อมีการเปลี่ยนหมวดหมู่ หรือพิมพ์ค้นหาชื่อ
+    React.useEffect(() => {
+        setTablePage(1);
+    }, [selectedCategory, searchTerm]);
+
+    const allAvailableCategories = React.useMemo(() => {
+        return villages?.map(v => v.name) || [];
+    }, [villages]);
+
+    const flatMembers = React.useMemo(() => {
+        let list = [];
+        (members || []).forEach(house => {
+            const cat = (house.category && house.category !== '0') ? String(house.category).trim() : 'ทั่วไป';
+            (house.familyMembers || []).forEach(person => {
+                list.push({
+                    ...person,
+                    houseNo: house.houseNo,
+                    category: cat,
+                    wasteData: person.wasteData || {}
+                });
+            });
+        });
+        return list;
+    }, [members]);
+
+    const filteredMembers = React.useMemo(() => {
+        return flatMembers.filter(m => {
+            const matchCategory = selectedCategory === 'all' || m.category === selectedCategory.trim();
+            const matchSearch = String(m.houseNo).includes(searchTerm.trim()) || String(m.name || '').toLowerCase().includes(searchTerm.toLowerCase().trim());
+            return matchCategory && matchSearch;
+        }).sort((a, b) => {
+            const numA = parseInt(String(a.category).match(/\d+/) || [999]);
+            const numB = parseInt(String(b.category).match(/\d+/) || [999]);
+            if (numA !== numB) return numA - numB;
+            return String(a.houseNo).localeCompare(String(b.houseNo), undefined, { numeric: true });
+        });
+    }, [flatMembers, selectedCategory, searchTerm]);
+
+    const totalPages = Math.max(1, Math.ceil(filteredMembers.length / itemsPerPage));
+    const currentMembers = filteredMembers.slice((tablePage - 1) * itemsPerPage, tablePage * itemsPerPage);
+
+    const totals = React.useMemo(() => {
+        let money = 0, credit = 0, weight = 0;
+        const wasteTotals = {};
+        filteredMembers.forEach(m => {
+            money += Number(m.balance || 0);
+            credit += Number(m.credit || 0);
+            wasteTypes.forEach(t => {
+                const w = Number(m.wasteData?.[t] || 0);
+                wasteTotals[t] = (wasteTotals[t] || 0) + w;
+                weight += w;
+            });
+        });
+        return { money, credit, weight, wasteTotals };
+    }, [filteredMembers]);
+
+    const handleExport = () => {
+        const dataToExport = flatMembers.filter(m => {
+            if (exportSelectedCategories.includes('all')) return true;
+            return exportSelectedCategories.includes(m.category);
+        }).sort((a, b) => {
+            const numA = parseInt(String(a.category).match(/\d+/) || [999]);
+            const numB = parseInt(String(b.category).match(/\d+/) || [999]);
+            if (numA !== numB) return numA - numB;
+            return String(a.houseNo).localeCompare(String(b.houseNo), undefined, { numeric: true });
+        });
+
+        if (dataToExport.length === 0) {
+            alert("ไม่พบข้อมูลในหมวดหมู่ที่เลือก");
+            return;
+        }
+
+        const headers = ['หมวดหมู่', 'บ้านเลขที่', 'ชื่อสมาชิก', 'การคัดแยก', ...wasteTypes, 'นน.รวม', 'ยอดเงิน', 'คาร์บอน'];
+        const rows = dataToExport.map(m => {
+            let rowW = 0;
+            const wCols = wasteTypes.map(t => { const v = Number(m.wasteData?.[t] || 0); rowW += v; return v; });
+            return [m.category, m.houseNo, m.name, m.isSorted ? '✅ แยก' : '❌ ไม่แยก', ...wCols, rowW.toFixed(2), m.balance, m.credit];
+        });
+
+        const csvContent = "\uFEFF" + [headers, ...rows].map(e => e.join(",")).join("\n");
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `สรุปยอดสมาชิก_${new Date().toISOString().slice(0, 10)}.csv`;
+        link.click();
+
+        setShowExportModal(false);
+    };
+
+    const toggleExportCategory = (category) => {
+        setExportSelectedCategories(prev => {
+            if (category === 'all') return ['all'];
+            let newSelection = prev.filter(c => c !== 'all');
+            if (newSelection.includes(category)) {
+                newSelection = newSelection.filter(c => c !== category);
+            } else {
+                newSelection.push(category);
+            }
+            if (newSelection.length === 0) return ['all'];
+            return newSelection;
+        });
+    };
+
+    return (
+        <div className="space-y-4 animate-in fade-in duration-500 h-full flex flex-col p-4 relative">
+
+            {showExportModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm animate-in fade-in px-4">
+                    <div className="bg-white rounded-3xl shadow-xl w-full max-w-md overflow-hidden flex flex-col">
+                        <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                            <div>
+                                <h3 className="font-black text-lg text-slate-800">เลือกหมวดหมู่ที่ต้องการ Export</h3>
+                                <p className="text-xs text-slate-500 font-bold mt-1">สามารถเลือกได้หลายหมวดหมู่พร้อมกัน</p>
+                            </div>
+                            <button onClick={() => setShowExportModal(false)} className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="p-5 max-h-[50vh] overflow-y-auto flex flex-col gap-2">
+                            <label className="flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all hover:bg-slate-50">
+                                <input type="checkbox" checked={exportSelectedCategories.includes('all')} onChange={() => toggleExportCategory('all')} className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500" />
+                                <span className="font-black text-slate-800 text-sm">ดาวน์โหลดทั้งหมดทุกหมวดหมู่</span>
+                            </label>
+                            <div className="h-px bg-slate-100 my-2"></div>
+                            {allAvailableCategories.map(cat => (
+                                <label key={cat} className="flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all hover:bg-slate-50">
+                                    <input type="checkbox" checked={exportSelectedCategories.includes(cat) && !exportSelectedCategories.includes('all')} onChange={() => toggleExportCategory(cat)} className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500" />
+                                    <span className="font-bold text-slate-700 text-sm">{cat}</span>
+                                </label>
+                            ))}
+                        </div>
+                        <div className="p-5 border-t border-slate-100 bg-slate-50 flex gap-3">
+                            <button onClick={() => setShowExportModal(false)} className="flex-1 bg-white border border-slate-200 text-slate-600 px-4 py-3 rounded-xl font-bold text-sm hover:bg-slate-50 transition">ยกเลิก</button>
+                            <button onClick={handleExport} className="flex-1 bg-emerald-600 text-white px-4 py-3 rounded-xl font-black text-sm hover:bg-emerald-700 transition shadow-[0_4px_10px_rgba(16,185,129,0.2)] flex items-center justify-center gap-2">
+                                <Download size={18} /> ยืนยันดาวน์โหลด
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex justify-between items-center shrink-0 flex-wrap gap-4">
+                <div>
+                    <h2 className="font-black text-2xl text-slate-800">สรุปยอดสมาชิกปัจจุบัน</h2>
+                    <p className="text-sm text-slate-500 font-bold mt-1">แสดงข้อมูลรายบุคคล - รองรับการ Export รายหมวด</p>
+                </div>
+                <div className="flex gap-2 w-full sm:w-auto">
+                    <button onClick={() => setCurrentPage('admin')} className="flex-1 sm:flex-none bg-slate-100 text-slate-600 hover:bg-slate-200 px-5 py-2.5 rounded-xl font-bold text-sm transition whitespace-nowrap">← ย้อนกลับ</button>
+                    <button onClick={() => setShowExportModal(true)} className="flex-1 sm:flex-none bg-emerald-600 text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-emerald-700 transition whitespace-nowrap flex items-center justify-center gap-2">
+                        <Download size={16} /> Export CSV
+                    </button>
+                </div>
+            </div>
+
+            <div className="flex gap-2 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm items-center shrink-0 flex-wrap">
+                <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} className="p-3 rounded-xl border border-slate-200 text-sm font-bold w-full sm:w-48 bg-slate-50 cursor-pointer outline-none">
+                    <option value="all">ทุกหมวดหมู่</option>
+                    {villages?.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
+                </select>
+                <input placeholder="ค้นหาชื่อ หรือ บ้านเลขที่..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="p-3 rounded-xl border border-slate-200 text-sm flex-1 font-bold outline-none w-full" />
+            </div>
+
+            <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+                <div className="flex-1 overflow-auto scrollbar-thin">
+                    <table className="w-full text-left border-collapse min-w-max">
+                        <thead className="bg-slate-100 text-[11px] uppercase font-black text-slate-600 sticky top-0 z-20">
+                            <tr>
+                                <th className="p-4 sticky left-0 bg-slate-100 z-30 shadow-[2px_0_5px_rgba(0,0,0,0.02)]">หมวด / บ้าน / ชื่อ</th>
+                                <th className="p-4 text-right">นน.รวม</th>
+                                <th className="p-4 text-right">ยอดเงิน</th>
+                                <th className="p-4 text-right">คาร์บอน</th>
+                                {wasteTypes.map(t => <th key={t} className="p-4 text-center">{t}</th>)}
+                            </tr>
+                        </thead>
+                        <tbody className="text-sm divide-y divide-slate-100">
+                            {currentMembers.length > 0 ? currentMembers.map((m, i) => (
+                                <tr key={i} className="hover:bg-blue-50/50 transition-colors">
+                                    <td className="p-4 sticky left-0 bg-white border-r border-slate-50 min-w-[240px] z-10 shadow-[2px_0_5px_rgba(0,0,0,0.02)]">
+                                        <div className="font-black text-purple-700 text-[10px] bg-purple-50 w-fit px-2 py-0.5 rounded border border-purple-100 mb-1">{m.category}</div>
+                                        <div className="font-black text-slate-800 text-base">บ้าน {m.houseNo}</div>
+                                        <div className="text-slate-600 text-sm mt-0.5 truncate max-w-[200px]">{m.name}</div>
+                                    </td>
+                                    <td className="p-4 text-right font-black text-slate-700 bg-blue-50/30">
+                                        {wasteTypes.reduce((acc, t) => acc + (Number(m.wasteData?.[t]) || 0), 0).toFixed(2)}
+                                    </td>
+                                    <td className="p-4 text-right font-black text-amber-700 bg-amber-50/30">฿{Number(m.balance).toFixed(2)}</td>
+                                    <td className="p-4 text-right font-black text-emerald-700 bg-emerald-50/30">+{Number(m.credit).toFixed(4)}</td>
+                                    {wasteTypes.map(t => (
+                                        <td key={t} className={`p-4 text-center font-bold ${Number(m.wasteData?.[t]) > 0 ? 'text-blue-700 bg-blue-50/50' : 'text-slate-300'}`}>
+                                            {Number(m.wasteData?.[t]) > 0 ? Number(m.wasteData?.[t]).toFixed(2) : '-'}
+                                        </td>
+                                    ))}
+                                </tr>
+                            )) : (
+                                <tr>
+                                    <td colSpan={wasteTypes.length + 4} className="py-20 text-center text-slate-400 font-bold bg-slate-50/50">
+                                        ไม่พบข้อมูลสมาชิก
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                        {currentMembers.length > 0 && (
+                            <tfoot className="bg-slate-800 text-white font-black text-sm sticky bottom-0 z-20 shadow-[0_-4px_10px_rgba(0,0,0,0.1)]">
+                                <tr>
+                                    <td className="p-4 sticky left-0 bg-slate-800 z-30">สรุปยอด (หมวดที่แสดง)</td>
+                                    <td className="p-4 text-right text-blue-300">{totals.weight.toFixed(2)}</td>
+                                    <td className="p-4 text-right text-amber-400">฿{totals.money.toFixed(2)}</td>
+                                    <td className="p-4 text-right text-emerald-400">{totals.credit.toFixed(4)}</td>
+                                    {wasteTypes.map(t => (
+                                        <td key={t} className={`p-4 text-center ${totals.wasteTotals[t] > 0 ? 'text-white' : 'text-slate-500'}`}>
+                                            {totals.wasteTotals[t] > 0 ? totals.wasteTotals[t].toFixed(2) : '-'}
+                                        </td>
+                                    ))}
+                                </tr>
+                            </tfoot>
+                        )}
+                    </table>
+                </div>
+
+                {filteredMembers.length > itemsPerPage && (
+                    <div className="bg-white border-t border-slate-100 p-3 flex items-center justify-between shrink-0">
+                        <span className="text-xs font-bold text-slate-400 ml-2 hidden sm:block">แสดงผล {currentMembers.length} จาก {filteredMembers.length} รายการ</span>
+                        <div className="flex items-center gap-2 w-full sm:w-auto justify-center">
+                            <button onClick={() => setTablePage(prev => Math.max(prev - 1, 1))} disabled={tablePage === 1} className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg font-bold text-xs text-slate-600 disabled:opacity-40 hover:bg-slate-100 transition-colors">◀ ก่อนหน้า</button>
+                            <span className="font-black text-slate-600 text-xs px-3">หน้า {tablePage} / {totalPages}</span>
+                            <button onClick={() => setTablePage(prev => Math.min(prev + 1, totalPages))} disabled={tablePage === totalPages} className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg font-bold text-xs text-slate-600 disabled:opacity-40 hover:bg-slate-100 transition-colors">ถัดไป ▶</button>
+                        </div>
                     </div>
                 )}
             </div>
@@ -2439,7 +2832,7 @@ const LoginView = ({ setIsLoggedIn, staffs, setCurrentUser, logAdminAction }) =>
 const AdminPanel = ({
     currentUser, setCurrentPage, members, setMembers, editingVillage, setEditingVillage, onDeleteMember,
     isAddMemberOpen, setIsAddMemberOpen, currentLocation, setTempLocation, tempLocation, villageData,
-    setIsPriceEditing
+    setIsPriceEditing, fetchHistoryData, fetchAdminLogsData, fetchSummaryData
 }) => {
     return (
         <div className="space-y-6 animate-in fade-in duration-300">
@@ -2496,15 +2889,33 @@ const AdminPanel = ({
                     <h3 className="font-bold text-xs sm:text-lg text-slate-800">จัดการยอดเงิน</h3>
                     <p className="text-sm text-slate-500 hidden sm:block mt-1">แก้ไข หรือ หักเงินสมาชิกแบบกลุ่ม</p>
                 </button>
-                <button onClick={() => setCurrentPage('history')} className="bg-white p-4 sm:p-6 rounded-2xl border-2 border-transparent hover:border-purple-500 transition-all shadow-sm flex flex-col items-center sm:items-start text-center sm:text-left group">
+                <button onClick={async () => {
+                    await fetchHistoryData();
+                    setCurrentPage('history');
+                }} className="bg-white p-4 sm:p-6 rounded-2xl border-2 border-transparent hover:border-purple-500 transition-all shadow-sm flex flex-col items-center sm:items-start text-center sm:text-left group">
                     <div className="bg-purple-100 text-purple-600 w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center mb-2 sm:mb-4 group-hover:scale-110 transition shrink-0"><History className="w-5 h-5 sm:w-6 sm:h-6" /></div>
-                    <h3 className="font-bold text-xs sm:text-lg text-slate-800">ประวัติรายครัวเรือน</h3>
-                    <p className="text-sm text-slate-500 hidden sm:block mt-1">ดูสถิติและล้างข้อมูลประจำเดือน</p>
+                    <h3 className="font-bold text-xs sm:text-lg text-slate-800">ตารางประวัติการฝาก</h3>
+                    <p className="text-sm text-slate-500 hidden sm:block mt-1">ดูสถิติและข้อมูลประจำเดือน</p>
                 </button>
-                <button onClick={() => setCurrentPage('admin_logs')} className="bg-white p-4 sm:p-6 rounded-2xl border-2 border-transparent hover:border-slate-600 transition-all shadow-sm flex flex-col items-center sm:items-start text-center sm:text-left group">
+                <button onClick={async () => {
+                    await fetchAdminLogsData();
+                    setCurrentPage('admin_logs');
+                }} className="bg-white p-4 sm:p-6 rounded-2xl border-2 border-transparent hover:border-slate-600 transition-all shadow-sm flex flex-col items-center sm:items-start text-center sm:text-left group">
                     <div className="bg-slate-100 text-slate-600 w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center mb-2 sm:mb-4 group-hover:scale-110 transition shrink-0"><ClipboardList className="w-5 h-5 sm:w-6 sm:h-6" /></div>
-                    <h3 className="font-bold text-xs sm:text-lg text-slate-800">ประวัติงานแอดมิน</h3>
+                    <h3 className="font-bold text-xs sm:text-lg text-slate-800">ประวัติการทำงานเจ้าหน้าที่</h3>
                     <p className="text-sm text-slate-500 hidden sm:block mt-1">ตรวจสอบบันทึกการทำงานในระบบ</p>
+                </button>
+                <button
+                    onClick={async () => {
+                        await fetchSummaryData();
+                    }}
+                    className="bg-white p-4 sm:p-6 rounded-2xl border-2 border-transparent hover:border-sky-500 transition-all shadow-sm flex flex-col items-center sm:items-start text-center sm:text-left group"
+                >
+                    <div className="bg-sky-100 text-sky-600 w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center mb-2 sm:mb-4 group-hover:scale-110 transition shrink-0">
+                        <LayoutList className="w-5 h-5 sm:w-6 sm:h-6" />
+                    </div>
+                    <h3 className="font-bold text-xs sm:text-lg text-slate-800">สรุปยอดสมาชิก</h3>
+                    <p className="text-sm text-slate-500 hidden sm:block mt-1">ดูตารางยอดปัจจุบันแยกรายบุคคล</p>
                 </button>
                 <button onClick={() => setCurrentPage('import_excel')} className="bg-white p-4 sm:p-6 rounded-2xl border-2 border-transparent hover:border-cyan-500 transition-all shadow-sm flex flex-col items-center sm:items-start text-center sm:text-left group">
                     <div className="bg-cyan-100 text-cyan-600 w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center mb-2 sm:mb-4 group-hover:scale-110 transition shrink-0">
@@ -3328,12 +3739,6 @@ const RecordWasteView = ({ members, villages, setMembers, setVillages, db, logAd
             };
             await addDoc(collection(db, "waste_transactions"), newTx);
 
-            // 5. เก็บ Log แอดมิน
-            const typesSummary = Object.entries(basketSummary).map(([t, w]) => `${t} ${w} กก.`).join(', ');
-            if (typeof logAdminAction === 'function') {
-                logAdminAction(`รับฝากขยะให้ "${personName}" (บ้าน ${houseMember.houseNo}) | รายการ: [${typesSummary}] | ยอดเงิน: +฿${finalBalanceToAdd.toLocaleString()}`);
-            }
-
             // 6. รีเฟรชหน้าจอ
             setActivePersonKey(null);
             setCurrentBasket([]);
@@ -3358,7 +3763,7 @@ const RecordWasteView = ({ members, villages, setMembers, setVillages, db, logAd
                     <p className="text-sm text-slate-500 mt-1">เลือกลูกบ้านและเพิ่มขยะลงตะกร้า ระบบจะคำนวณเงินออโต้</p>
                 </div>
                 <button onClick={() => setCurrentPage('admin')} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold transition-colors text-sm">
-                    ← กลับแผงจัดการ
+                    ← ย้อนกลับ
                 </button>
             </div>
 
@@ -3525,7 +3930,7 @@ const RecordWasteView = ({ members, villages, setMembers, setVillages, db, logAd
 // =========================================================================
 // 📥 หน้าจอระบบนำเข้าข้อมูลสมาชิกจากไฟล์ Excel/CSV (ImportDataView) - Premium Native Page
 // =========================================================================
-const ImportDataView = ({ db, villages, refreshData, setCurrentPage, logAdminAction }) => {
+const ImportDataView = ({ db, villages, refreshData, setCurrentPage, logAdminAction, globalPrices }) => {
     const [step, setStep] = useState(1); // 1 = อัปโหลด, 2 = รีเช็ค Preview, 3 = โหลดบันทึก
     const [previewHouses, setPreviewHouses] = useState([]);
     const [previewPage, setPreviewPage] = useState(1);
@@ -3539,20 +3944,27 @@ const ImportDataView = ({ db, villages, refreshData, setCurrentPage, logAdminAct
         'อลูมิเนียม': 9.1270, 'โลหะผสม': 4.3910, 'เหล็ก': 1.8320
     };
 
-    const wasteTypes = [
-        'พลาสติก', 'กระดาษ', 'แก้ว', 'อลูมิเนียม', 'โลหะผสม', 'เหล็ก', 'สังกะสีกระป๋อง',
-        'สังกะสีแผ่น', 'PVC สีฟ้า', 'พลาสติกใส', 'PVC สีเทา', 'พลาสติกสกรีน', 'มอเตอร์',
-        'กระดาษลัง', 'พัดลมใหญ่', 'พัดลมเล็ก', 'ลังเหล้า', 'โทรทัศน์', 'ลังเบียร์ช้าง',
-        'เครื่องซักผ้า', 'ลังเบียร์สิงห์/ลีโอ', 'ตู้เย็น', 'อลูมิเนียมป้อง', 'แบตเตอรี่ใหญ่',
-        'อลูมิเนียมบาง', 'แบตเตอรี่เล็ก', 'ทองเหลือง', 'แผ่น CD', 'ทองแดง', 'มุ้งลวด'
-    ];
+    const wasteTypes = React.useMemo(() => {
+        return globalPrices && globalPrices.length > 0
+            ? globalPrices.map(p => p.type)
+            : [];
+    }, [globalPrices]);
 
     // ฟังก์ชันสร้างและดาวน์โหลดไฟล์ Template CSV
     const handleDownloadTemplate = () => {
         const headers = ['บ้านเลขที่', 'หมวดหมู่', 'ชื่อสมาชิก', 'การคัดแยก', 'สิทธิ์สวัสดิการ', 'ยอดเงินตั้งต้น', ...wasteTypes];
-        const exampleRow = ['123/1', 'หมวดที่ 1', 'สมหมาย ใจดี', 'มี', 'ไม่มี', '150', '2.5', '', '1.0']; // ตัวอย่าง
 
-        const csvContent = "\uFEFF" + headers.join(',') + "\n" + exampleRow.join(',') + Array(wasteTypes.length - 3).fill('').join(',');
+        // สร้างข้อมูลตัวอย่าง (บ้านเลขที่, หมวด, ชื่อ, แยก, สวัสดิการ, เงิน)
+        const exampleRow = ['123/1', 'หมวดที่ 1', 'ชื่อ - นามสกุล', 'มี', 'ไม่มี', '150'];
+
+        // ใส่ตัวเลขจำลองให้ขยะ 2 ชนิดแรก (ถ้ามี) ที่เหลือปล่อยเป็นช่องว่าง
+        if (wasteTypes.length > 0) exampleRow.push('2.5');
+        if (wasteTypes.length > 1) exampleRow.push('1.0');
+        for (let i = 2; i < wasteTypes.length; i++) {
+            exampleRow.push('');
+        }
+
+        const csvContent = "\uFEFF" + headers.join(',') + "\n" + exampleRow.join(',');
 
         const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
         const link = document.createElement("a");
@@ -3723,7 +4135,7 @@ const ImportDataView = ({ db, villages, refreshData, setCurrentPage, logAdminAct
                 </div>
                 {step !== 3 && (
                     <button onClick={() => setCurrentPage('admin')} className="relative z-10 px-5 py-3 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-xl font-bold transition-all text-sm border border-slate-200 shadow-sm flex items-center gap-2">
-                        ← กลับแผงจัดการ
+                        ← ย้อนกลับ
                     </button>
                 )}
             </div>
@@ -3756,7 +4168,7 @@ const ImportDataView = ({ db, villages, refreshData, setCurrentPage, logAdminAct
                                 </div>
                             </button>
 
-                            {/* ปุ่ม Export (จำลองฟังก์ชันไว้ก่อน) */}
+                            {/* ปุ่ม Export (จำลองฟังก์ชันไว้ก่อน) 
                             <button
                                 className="group bg-white hover:bg-emerald-50 border border-slate-200 hover:border-emerald-200 p-5 rounded-[20px] flex items-center gap-4 transition-all duration-300 shadow-sm hover:shadow-md text-left"
                             >
@@ -3768,7 +4180,7 @@ const ImportDataView = ({ db, villages, refreshData, setCurrentPage, logAdminAct
                                     <span className="block text-[10px] text-slate-400 font-bold mt-0.5">ระบบ Export ไปยัง Excel</span>
                                 </div>
                             </button>
-
+*/}
                             {/* กล่องคำแนะนำ */}
                             <div className="mt-auto pt-6 border-t border-slate-100">
                                 <div className="bg-amber-50 border border-amber-100 p-4 rounded-[16px]">
@@ -3993,9 +4405,6 @@ const App = () => {
             const logsSnap = await getDocs(query(collection(db, "admin_logs"), orderBy("timestamp", "desc"), limit(200)));
             setAdminLogs(logsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
-            const txSnap = await getDocs(query(collection(db, "waste_transactions"), orderBy("timestamp", "desc"), limit(200)));
-            setTransactions(txSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-
             /// 🌟 5. โหลดราคากลางจาก Firestore
             try {
                 const priceSnap = await getDoc(doc(db, "settings", "waste_prices"));
@@ -4072,107 +4481,86 @@ const App = () => {
         fetchAllMembersForStats();
     }, []);
 
-    useEffect(() => {
-        const loadLogsFromCloud = async () => {
-            try {
-                const q = query(collection(db, "admin_logs"), orderBy("timestamp", "desc"), limit(50));
-                const querySnapshot = await getDocs(q);
-
-                // 🌟 นี่คือหัวใจสำคัญ: doc.id คือรหัสแท้ๆ ที่ Firebase สร้างให้
-                const fetchedLogs = querySnapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                }));
-
-                setAdminLogs(fetchedLogs);
-                localStorage.setItem('admin_action_logs', JSON.stringify(fetchedLogs));
-            } catch (err) {
-                console.error("ดึงประวัติจาก Cloud ไม่สำเร็จ:", err);
-            }
-        };
-
-        loadLogsFromCloud();
-    }, []);
 
     // ☁️ ฟังก์ชันสำหรับบันทึกน้ำหนักขยะและยอดเงิน พุ่งขึ้น Firebase (รองรับระดับบุคคล)
+    // ☁️ ฟังก์ชันสำหรับบันทึกน้ำหนักขยะและยอดเงิน พุ่งขึ้น Firebase (รองรับระดับบุคคล ป้องกันข้อมูลชนกัน)
     const handleSaveWasteRecord = async (memberId, personId, turnWasteData, turnCredit, addedBalance) => {
         try {
-            // 1. บังคับตัวแปรให้เป็นตัวเลขเสมอ ป้องกัน Error .toFixed
             const finalBalanceToAdd = Number(addedBalance) || 0;
             const finalCreditToAdd = Number(turnCredit) || 0;
 
-            // 2. ดึงข้อมูลสมาชิกดั้งเดิมออกมาก่อน เพื่อหาชื่อให้ชัวร์ๆ (แก้ ReferenceError ถาวร)
-            const originalMember = members.find(m => String(m.id) === String(memberId));
-            if (!originalMember) return alert("❌ ไม่พบข้อมูลบ้านเลขที่นี้ในระบบ");
+            const memberRef = doc(db, "members", String(memberId));
 
-            const targetHouseNo = originalMember.houseNo;
-            const originalPerson = (originalMember.familyMembers || []).find(p => String(p.id || '') === String(personId));
-
-            // ค้นหาชื่อคนฝาก
+            let updatedMemberObj = null;
             let finalPersonName = 'สมาชิก';
-            if (originalPerson) {
-                finalPersonName = typeof originalPerson === 'string' ? originalPerson : (originalPerson.name || 'สมาชิก');
-            }
 
-            // 3. วนลูปอัปเดตข้อมูล State ของบ้านและรายคน
-            const updatedMembers = members.map(m => {
-                if (String(m.id) === String(memberId)) {
+            // 🌟 พระเอกของเรา: runTransaction บังคับให้ระบบดึงข้อมูล "ล่าสุดจริงๆ" ก่อนเซฟเสมอ
+            await runTransaction(db, async (transaction) => {
+                const sfDoc = await transaction.get(memberRef);
+                if (!sfDoc.exists()) throw new Error("ไม่พบข้อมูลบ้านเลขที่นี้ในระบบ");
 
-                    // อัปเดตรายคน
-                    const updatedFamily = (m.familyMembers || []).map((person, index) => {
-                        const pId = person.id || String(index);
-                        if (String(pId) === String(personId)) {
-                            const pObj = typeof person === 'string'
-                                ? { id: pId, name: person, balance: 0, credit: 0, wasteData: { 'พลาสติก': 0, 'กระดาษ': 0, 'แก้ว': 0, 'อลูมิเนียม': 0, 'โลหะผสม': 0, 'เหล็ก': 0 }, hasWelfare: false, isSorted: false }
-                                : { ...person };
+                const latestCloudData = sfDoc.data();
 
-                            pObj.balance = (Number(pObj.balance) || 0) + finalBalanceToAdd;
-                            pObj.credit = (Number(pObj.credit) || 0) + finalCreditToAdd;
-                            pObj.isSorted = true;
-
-                            const pWaste = { ...(pObj.wasteData || {}) };
-                            Object.keys(turnWasteData).forEach(type => {
-                                pWaste[type] = (Number(pWaste[type]) || 0) + (Number(turnWasteData[type]) || 0);
-                            });
-                            pObj.wasteData = pWaste;
-                            return pObj;
-                        }
-                        return person;
-                    });
-
-                    // คำนวณยอดรวมของบ้านใหม่
-                    const newHouseBalance = updatedFamily.reduce((sum, p) => sum + (Number(p.balance) || 0), 0);
-                    const newHouseCredit = updatedFamily.reduce((sum, p) => sum + (Number(p.credit) || 0), 0);
-
-                    const aggregatedWaste = { 'พลาสติก': 0, 'กระดาษ': 0, 'แก้ว': 0, 'อลูมิเนียม': 0, 'โลหะผสม': 0, 'เหล็ก': 0 };
-                    updatedFamily.forEach(person => {
-                        Object.entries(person.wasteData || {}).forEach(([type, weight]) => {
-                            aggregatedWaste[type] += Number(weight) || 0;
-                        });
-                    });
-
-                    return {
-                        ...m,
-                        wasteData: aggregatedWaste,
-                        familyMembers: updatedFamily,
-                        credit: newHouseCredit,
-                        balance: newHouseBalance,
-                        isSorted: true
-                    };
+                // หาชื่อคนฝาก
+                const originalPerson = (latestCloudData.familyMembers || []).find(p => String(p.id || '') === String(personId));
+                if (originalPerson) {
+                    finalPersonName = typeof originalPerson === 'string' ? originalPerson : (originalPerson.name || 'สมาชิก');
                 }
-                return m;
+
+                // คำนวณบวกทบรายบุคคล
+                const updatedFamily = (latestCloudData.familyMembers || []).map((p, idx) => {
+                    const pId = p.id || String(idx);
+                    if (String(pId) === String(personId)) {
+                        const pObj = typeof p === 'string'
+                            ? { id: pId, name: p, balance: 0, credit: 0, wasteData: { 'พลาสติก': 0, 'กระดาษ': 0, 'แก้ว': 0, 'อลูมิเนียม': 0, 'โลหะผสม': 0, 'เหล็ก': 0 }, hasWelfare: false, isSorted: false }
+                            : { ...p };
+
+                        pObj.balance = (Number(pObj.balance) || 0) + finalBalanceToAdd;
+                        pObj.credit = (Number(pObj.credit) || 0) + finalCreditToAdd;
+                        pObj.isSorted = true;
+
+                        const pWaste = { ...(pObj.wasteData || {}) };
+                        Object.keys(turnWasteData).forEach(type => {
+                            pWaste[type] = (Number(pWaste[type]) || 0) + (Number(turnWasteData[type]) || 0);
+                        });
+                        pObj.wasteData = pWaste;
+                        return pObj;
+                    }
+                    return p;
+                });
+
+                // คำนวณระดับบ้าน
+                const newHouseBalance = updatedFamily.reduce((sum, p) => sum + (Number(p.balance) || 0), 0);
+                const newHouseCredit = updatedFamily.reduce((sum, p) => sum + (Number(p.credit) || 0), 0);
+
+                const aggregatedWaste = { 'พลาสติก': 0, 'กระดาษ': 0, 'แก้ว': 0, 'อลูมิเนียม': 0, 'โลหะผสม': 0, 'เหล็ก': 0 };
+                updatedFamily.forEach(person => {
+                    Object.entries(person.wasteData || {}).forEach(([type, weight]) => {
+                        aggregatedWaste[type] = (aggregatedWaste[type] || 0) + (Number(weight) || 0);
+                    });
+                });
+
+                updatedMemberObj = {
+                    ...latestCloudData,
+                    wasteData: aggregatedWaste,
+                    familyMembers: updatedFamily,
+                    credit: newHouseCredit,
+                    balance: newHouseBalance,
+                    isSorted: true
+                };
+
+                // สั่งเซฟข้อมูลที่ผ่านการคำนวณอย่างปลอดภัยแล้ว
+                transaction.update(memberRef, updatedMemberObj);
             });
 
-            // 4. บันทึกลง LocalStorage
-            setMembers(updatedMembers);
-            localStorage.setItem('local_members_data', JSON.stringify(updatedMembers));
+            // --- ส่วนที่เหลือ (อัปเดตหน้าจอ, สร้าง Log, สร้างประวัติ) ทำเหมือนเดิม ---
 
-            const updatedMemberObj = updatedMembers.find(m => String(m.id) === String(memberId));
+            // อัปเดต State จอ
+            const nextMembers = members.map(m => String(m.id) === String(memberId) ? updatedMemberObj : m);
+            setMembers(nextMembers);
+            localStorage.setItem('local_members_data', JSON.stringify(nextMembers));
 
-            // 5. ☁️ บันทึกลง Firebase (Members)
-            await setDoc(doc(db, "members", String(memberId)), updatedMemberObj);
-
-            // 6. อัปเดตข้อมูลหมู่บ้าน
+            // อัปเดตข้อมูลหมู่บ้านบนจอ
             setVillages(prevVillages => {
                 const updatedVillages = prevVillages.map(v => {
                     if (v.id === updatedMemberObj.villageId) {
@@ -4193,37 +4581,30 @@ const App = () => {
                 return updatedVillages;
             });
 
-            // 7. บันทึกประวัติและแจ้งเตือน (Admin Logs)
-            const typesSummary = Object.entries(turnWasteData).filter(([_, w]) => w > 0).map(([t, w]) => `${t} ${w} กก.`).join(', ');
-
-            const logMsg = `บันทึกข้อมูลให้ "บ้านเลขที่ ${targetHouseNo}" (โดย ${finalPersonName}) | ขยะ: [${typesSummary}] (+${finalCreditToAdd.toFixed(4)} kgCO2e) | ฝากเงิน: +฿${finalBalanceToAdd.toLocaleString()}`;
-            logAdminAction(logMsg);
-
-            // 8. ☁️ ยิง "ประวัติฝากขยะ (History)" ขึ้น Firebase
+            // สร้างใบเสร็จ (History) ลง DB
             const now = new Date();
             const ThaiMonths = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
-            const timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')} น.`;
-            const dateString = `${now.getDate()} ${ThaiMonths[now.getMonth()]} ${now.getFullYear() + 543}`;
-
             const newTx = {
-                houseNo: targetHouseNo,
+                houseNo: updatedMemberObj.houseNo,
                 personName: finalPersonName,
                 villageId: updatedMemberObj.villageId,
                 category: updatedMemberObj.category,
                 wasteData: turnWasteData,
                 creditAdded: finalCreditToAdd,
                 addedBalance: finalBalanceToAdd,
-                date: dateString,
-                time: timeString,
+                date: `${now.getDate()} ${ThaiMonths[now.getMonth()]} ${now.getFullYear() + 543}`,
+                time: `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')} น.`,
                 operator: currentUser ? currentUser.name : 'เจ้าหน้าที่ระบบ',
                 timestamp: serverTimestamp()
             };
-
             await addDoc(collection(db, "waste_transactions"), newTx);
 
+            // รีเฟรชและเคลียร์จอ
+            setActivePersonKey(null);
+            setCurrentBasket([]);
             if (typeof refreshData === 'function') await refreshData();
-            setIsRecordWasteOpen(false);
-            alert(`⚖️ บันทึกรายการฝากของ ${finalPersonName} สำเร็จ!`);
+
+            alert(`✅ บันทึกรายการฝากของ ${finalPersonName} เรียบร้อย! (+฿${finalBalanceToAdd.toLocaleString()})`);
 
         } catch (err) {
             console.error("Save Waste Error:", err);
@@ -4567,7 +4948,51 @@ const App = () => {
             amount: totals[type] || 0
         }));
     }, [allMembers]);
+    // 🌟 1. State ควบคุม Loading และเช็กว่าโหลดแล้วหรือยัง
+    const [isLoadingData, setIsLoadingData] = useState(false);
+    const [isDataLoaded, setIsDataLoaded] = useState({ history: false, logs: false, summary: false });
 
+    // 🌟 2. ฟังก์ชันแยกโหลดประวัติขยะ (Lazy Load)
+    const fetchHistoryData = async () => {
+        if (isDataLoaded.history) return; // ถ้าเคยโหลดแล้ว ให้ข้ามเลย ประหยัด DB
+        setIsLoadingData(true);
+        try {
+            const txSnap = await getDocs(query(collection(db, "waste_transactions"), orderBy("timestamp", "desc")));
+            setTransactions(txSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            setIsDataLoaded(prev => ({ ...prev, history: true }));
+        } catch (error) { console.error("โหลดประวัติขยะพลาด:", error); }
+        setIsLoadingData(false);
+    };
+
+    // 🌟 3. ฟังก์ชันแยกโหลดประวัติแอดมิน (Lazy Load)
+    const fetchAdminLogsData = async () => {
+        if (isDataLoaded.logs) return;
+        setIsLoadingData(true);
+        try {
+            const logsSnap = await getDocs(query(collection(db, "admin_logs"), orderBy("timestamp", "desc"), limit(200)));
+            setAdminLogs(logsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            setIsDataLoaded(prev => ({ ...prev, logs: true }));
+        } catch (error) { console.error("โหลดประวัติแอดมินพลาด:", error); }
+        setIsLoadingData(false);
+    };
+    const fetchSummaryData = async () => {
+        if (isDataLoaded.summary) {
+            setCurrentPage('summary');
+            return;
+        }
+        setIsLoadingData(true);
+        try {
+            const memberSnap = await getDocs(collection(db, "members"));
+            const membersData = memberSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setMembers(membersData);
+            setAllMembers(membersData);
+            setIsDataLoaded(prev => ({ ...prev, summary: true }));
+            setCurrentPage('summary');
+        } catch (error) {
+            console.error("โหลดข้อมูลสรุปสมาชิกพลาด:", error);
+        }
+        setIsLoadingData(false);
+    };
     //* --- renderContent: ฟังก์ชันสำหรับตัดสินใจว่าจะแสดงหน้าจอไหน-- -
     //* ทำหน้าที่เหมือนสวิตช์ไฟ(Switch Case) ตามค่าของตัวแปร currentPage
     const renderContent = () => {
@@ -4588,6 +5013,7 @@ const App = () => {
                         globalPrices={globalPrices}
                         refreshData={refreshData}
                         db={db}
+                        logAdminAction={logAdminAction}
                     />
                 );
 
@@ -4604,7 +5030,7 @@ const App = () => {
                     globalPrices={globalPrices} />;
 
             case 'history':
-                return <HistoryView transactions={transactions} villages={villages} db={db} refreshData={refreshData} setCurrentPage={setCurrentPage} />;
+                return <HistoryView transactions={transactions} villages={villages} db={db} refreshData={refreshData} setCurrentPage={setCurrentPage} globalPrices={globalPrices} />;
 
             case 'admin_logs':
                 return <AdminLogsView adminLogs={adminLogs} db={db} refreshData={refreshData} setCurrentPage={setCurrentPage} />;
@@ -4641,6 +5067,7 @@ const App = () => {
                         refreshData={refreshData}
                         setCurrentPage={setCurrentPage}
                         logAdminAction={logAdminAction}
+                        globalPrices={globalPrices}
                     />
                 );
             case 'map':
@@ -4669,7 +5096,13 @@ const App = () => {
                         />
                     </React.Suspense>
                 );
-
+            case 'summary':
+                return <MemberSummaryView
+                    members={members}
+                    villages={villages}
+                    setCurrentPage={setCurrentPage}
+                    globalPrices={globalPrices}
+                />;
             case 'admin':
                 return isLoggedIn ? (
                     <AdminPanel
@@ -4689,7 +5122,11 @@ const App = () => {
                         isRecordWasteOpen={isRecordWasteOpen}
                         setIsRecordWasteOpen={setIsRecordWasteOpen}
                         onSaveWasteRecord={handleSaveWasteRecord}
+                        fetchHistoryData={fetchHistoryData}
+                        fetchAdminLogsData={fetchAdminLogsData}
+                        fetchSummaryData={fetchSummaryData}
                     />
+
                 ) : (
                     <LoginView setIsLoggedIn={setIsLoggedIn} staffs={staffs} setCurrentUser={setCurrentUser} logAdminAction={logAdminAction} />
                 );
@@ -4701,7 +5138,13 @@ const App = () => {
 
     return (
         <div className="flex min-h-screen bg-[#f8fafc] font-sans text-slate-800">
-
+            {/* 🌟 เพิ่มป๊อปอัป Loading Overlay ตรงนี้ */}
+            {isLoadingData && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[99999] flex flex-col items-center justify-center">
+                    <div className="w-16 h-16 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin shadow-lg"></div>
+                    <p className="text-white font-black mt-4 animate-pulse text-lg drop-shadow-md">กำลังซิงค์ข้อมูลจาก Cloud...</p>
+                </div>
+            )}
             {/* ── 🟢 1. แถบเมนูข้าง Sidebar (แสดงเฉพาะจอ Desktop เท่านั้น) ── */}
             <aside className="hidden md:flex w-72 flex-col bg-gradient-to-b from-emerald-500 to-emerald-700 p-6 shadow-2xl shrink-0 sticky top-0 h-screen overflow-y-auto select-none border-r border-emerald-600/30">
 
@@ -4749,7 +5192,7 @@ const App = () => {
                     )}
                 </nav>
 
-                {/* 🌟 ส่วนท้าย Sidebar: ข้อมูลแอดมิน & เวอร์ชั่นระบบ */}
+                {/*  ส่วนท้าย Sidebar: ข้อมูลแอดมิน & เวอร์ชั่นระบบ */}
                 <div className="mt-auto pt-6">
 
                     {/* ข้อมูลแอดมิน (โชว์เฉพาะตอนล็อกอิน) */}
@@ -4794,12 +5237,7 @@ const App = () => {
                         {currentPage === 'prices' && '🪙 ตารางราคารับซื้อขยะประจำเดือน'}
                         {currentPage === 'map' && '🗺️ ระบบแผนที่ครัวเรือนระบบสารสนเทศ'}
                         {currentPage === 'admin' && '🛠️ แผงควบคุมระบบจัดการแอดมิน'}
-                        {currentPage === 'members' && '👥 ทะเบียนรายชื่อสมาชิกระบบ'}
-                        {currentPage === 'history' && '📋 ทะเบียนสรุปรายครัวเรือน'}
-                        {currentPage === 'admin_logs' && '📜 ประวัติกิจกรรมการทำงานของเจ้าหน้าที่'}
-                        {currentPage === 'record_waste' && '♻️ บันทึกรับฝากขยะและเงินประจำวัน'}
-                        {currentPage === 'manageBalance' && '💰 ระบบจัดการและปรับปรุงยอดเงินสมาชิก'}
-                        {currentPage === 'import_excel' && '📥 ระบบนำเข้าข้อมูลสมาชิกจากไฟล์ Excel (.csv)'}
+
                     </h2>
                     <div>
                         {!isLoggedIn ? (
