@@ -23,6 +23,7 @@ import {
 } from 'firebase/firestore';
 
 import MapView from './MapView.jsx';
+import AdminLogsView from './AdminLogsView'
 
 // === ส่วนที่ 2: องค์ประกอบย่อย (Sub-Components & Constants) ===
 // ส่วนนี้คือการสร้าง "ชิ้นส่วนเล็กๆ" ไว้ข้างนอก เพื่อให้ตัว App หลักเรียกใช้ได้ง่ายและไม่รก
@@ -276,16 +277,15 @@ const DashboardView = ({ stats, villageData, wasteTypeData, members, setCurrentP
                                 })
                                 .sort((a, b) => b.realBalance - a.realBalance)
                                 .map((v, i) => (
-                                    <div key={v.id} className="group relative bg-white border border-slate-100 p-3 rounded-2xl flex items-center justify-between hover:border-emerald-300 hover:shadow-md transition-all duration-300 overflow-hidden gap-2">
+                                    // 🌟 1. ใช้ border-l-[6px] และใส่สีที่ขอบแทนการใช้กล่อง absolute
+                                    <div key={v.id} className={`group bg-white border border-slate-100 p-3 rounded-2xl flex items-center justify-between hover:shadow-md transition-all duration-300 gap-2 border-l-[6px] ${i === 0 ? 'border-l-amber-400 hover:border-y-amber-200 hover:border-r-amber-200' :
+                                        i === 1 ? 'border-l-slate-300 hover:border-y-slate-200 hover:border-r-slate-200' :
+                                            i === 2 ? 'border-l-orange-400 hover:border-y-orange-200 hover:border-r-orange-200' :
+                                                'border-l-transparent hover:border-emerald-300'
+                                        }`}>
 
-                                        {/* แถบสีเน้นอันดับด้านซ้าย */}
-                                        <div className={`absolute left-0 top-0 bottom-0 w-1 sm:w-1.5 ${i === 0 ? 'bg-amber-400' :
-                                            i === 1 ? 'bg-slate-300' :
-                                                i === 2 ? 'bg-orange-400' : 'bg-transparent'
-                                            }`}></div>
-
-                                        {/* ฝั่งซ้าย: วงกลมอันดับ + ชื่อหมวด */}
-                                        <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0 pl-2">
+                                        {/* ฝั่งซ้าย: วงกลมอันดับ + ชื่อหมวด (เอา pl-2 ออกเพื่อให้จัดกึ่งกลางสวยๆ) */}
+                                        <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
                                             {/* เลขอันดับ */}
                                             <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-sm shrink-0 shadow-sm ${i === 0 ? 'bg-gradient-to-br from-amber-200 to-amber-400 text-amber-900' :
                                                 i === 1 ? 'bg-gradient-to-br from-slate-200 to-slate-300 text-slate-800' :
@@ -295,13 +295,13 @@ const DashboardView = ({ stats, villageData, wasteTypeData, members, setCurrentP
                                                 {i + 1}
                                             </div>
 
-                                            {/* ชื่อหมวด (ถ้ายาวให้ปัดขึ้นบรรทัดใหม่ ไม่ใช้การตัดคำ) */}
+                                            {/* ชื่อหมวด */}
                                             <h4 className="font-bold text-slate-700 text-sm leading-snug group-hover:text-emerald-700 transition-colors line-clamp-2">
                                                 {v.name}
                                             </h4>
                                         </div>
 
-                                        {/* ฝั่งขวา: ยอดเงิน (ฟอนต์ใหญ่ ป้ายสีเขียว) */}
+                                        {/* ฝั่งขวา: ยอดเงิน */}
                                         <div className="text-right shrink-0">
                                             <div className="font-black text-emerald-600 font-mono text-base sm:text-lg tracking-tight bg-emerald-50 px-2.5 py-1 rounded-xl border border-emerald-100/50">
                                                 ฿{v.realBalance.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
@@ -939,7 +939,11 @@ const EditMemberModal = ({ member, villageData, onSave, onDelete, onClose, globa
                                         <div className="flex items-center gap-3 w-full sm:w-1/2 justify-end">
                                             <div className="relative w-full">
                                                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">฿</span>
-                                                <input type="number" step="any" placeholder="0" value={person.balance || ''} onChange={(e) => updatePersonField(index, 'balance', parseFloat(e.target.value) || 0)} className="w-full border-2 border-slate-100 pl-10 pr-4 py-2.5 rounded-xl outline-none font-black text-amber-600 focus:border-amber-400 bg-slate-50 transition text-right text-lg" />
+                                                <input
+                                                    type="number" step="any" min="0" placeholder="0" value={person.balance ?? ''} onChange={(e) => {
+                                                        const val = parseFloat(e.target.value) || 0;
+                                                        updatePersonField(index, 'balance', Math.max(0, val));
+                                                    }} className="w-full border-2 border-slate-100 pl-10 pr-4 py-2.5 rounded-xl outline-none font-black text-amber-600 focus:border-amber-400 bg-slate-50 transition text-right text-lg" />
                                             </div>
                                             {editData.familyMembers.length > 1 && (
                                                 <button type="button" onClick={() => handleRemoveFamilyMember(index)} className="p-3 text-slate-400 hover:bg-red-50 hover:text-red-500 rounded-xl transition shrink-0 bg-slate-50">
@@ -1077,6 +1081,7 @@ const MembersView = ({ members, setMembers, villages, setVillages, isLoggedIn, l
     };
 
     // 💾 ฟังก์ชันรับค่าเมื่อกดบันทึกความเปลี่ยนแปลงจากหน้าต่างแก้ไข
+    // 💾 ฟังก์ชันรับค่าเมื่อกดบันทึกความเปลี่ยนแปลงจากหน้าต่างแก้ไข
     const handleSaveEdit = async (updatedMember) => {
         const oldMember = members.find(m => m.id === updatedMember.id);
         const targetVillage = villages.find(v => v.id === updatedMember.villageId);
@@ -1153,13 +1158,28 @@ const MembersView = ({ members, setMembers, villages, setVillages, isLoggedIn, l
         try {
             await setDoc(doc(db, "members", String(updatedMember.id)), updatedMember, { merge: true });
             setMembers(members.map(m => m.id === updatedMember.id ? updatedMember : m));
+
+            // 🌟 เพิ่มคำสั่งบันทึกประวัติ (Log) ตรงนี้!
+            if (typeof logAdminAction === 'function') {
+                // เช็กว่ามีการเปลี่ยนยอดเงินรวมของบ้านหรือไม่
+                const oldBal = oldMember ? Number(oldMember.balance) || 0 : 0;
+                const newBal = Number(updatedMember.balance) || 0;
+
+                if (oldBal !== newBal) {
+                    logAdminAction(`แก้ไขยอดเงิน บ้านเลขที่ ${updatedMember.houseNo} (จากเดิม ฿${oldBal.toLocaleString()} เปลี่ยนเป็น ฿${newBal.toLocaleString()})`);
+                } else {
+                    logAdminAction(`แก้ไขข้อมูลทั่วไป ครัวเรือนบ้านเลขที่ ${updatedMember.houseNo}`);
+                }
+            }
+
             alert(`💾 อัปเดตข้อมูลบ้านเลขที่ ${updatedMember.houseNo} ลง Cloud สำเร็จเรียบร้อย!`);
         } catch (err) {
             console.error("อัปเดต Firebase พลาด:", err);
             alert("❌ บันทึกข้อมูลไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่อ");
         }
 
-        setEditingMember(null); refreshData();
+        setEditingMember(null);
+        refreshData();
     };
 
     // 🗑️ ฟังก์ชันลบข้อมูลบ้านสมาชิกออกจากระบบอย่างถาวร
@@ -1804,15 +1824,19 @@ const ManageBalanceView = ({ members, villages, setMembers, db, logAdminAction, 
 
     //  ฟังก์ชันเซฟเงินใหม่ (ระดับบุคคล)
     const handleSavePersonBalance = async (houseMember, personId) => {
-        const newBalance = Number(editBalance);
+        const newBalance = Math.max(0, Number(editBalance));
         if (isNaN(newBalance)) return alert("❌ กรุณากรอกตัวเลขให้ถูกต้อง");
 
         try {
-            // 1. จำลองร่างบ้านหลังนี้ แล้วเข้าไปอัปเดตเงินคนนั้น
+            // 🌟 1. ค้นหา "ยอดเงินเดิม" และ "ชื่อ" เพื่อเตรียมส่งเข้าประวัติ (Log)
+            const targetPersonForLog = (houseMember.familyMembers || []).find(p => (p.id || String(p)) === String(personId));
+            const oldBalance = typeof targetPersonForLog === 'string' ? 0 : (Number(targetPersonForLog?.balance) || 0);
+            const pName = typeof targetPersonForLog === 'string' ? targetPersonForLog : (targetPersonForLog?.name || 'ไม่ระบุชื่อ');
+
+            // 2. จำลองร่างบ้านหลังนี้ แล้วเข้าไปอัปเดตเงินคนนั้น
             const updatedFamily = (houseMember.familyMembers || []).map((p, idx) => {
                 const pId = p.id || String(idx);
                 if (String(pId) === String(personId)) {
-                    // ดักข้อมูลเก่า
                     if (typeof p === 'string') {
                         return { id: pId, name: p, balance: newBalance, credit: 0, wasteData: {}, hasWelfare: false, isSorted: false };
                     }
@@ -1821,30 +1845,28 @@ const ManageBalanceView = ({ members, villages, setMembers, db, logAdminAction, 
                 return p;
             });
 
-            // 2. คำนวณยอดเงินรวมของบ้านใหม่
+            // 3. คำนวณยอดเงินรวมของบ้านใหม่
             const newHouseBalance = updatedFamily.reduce((sum, p) => sum + (Number(p.balance) || 0), 0);
-
-            // 3. แพ็คข้อมูลเซฟ
             const updatedMember = { ...houseMember, familyMembers: updatedFamily, balance: newHouseBalance };
 
             // 4. ยิงขึ้น Cloud
             await setDoc(doc(db, "members", String(houseMember.id)), updatedMember, { merge: true });
 
-            // 5. แจ้งเตือน Log แอดมิน
-            const targetPerson = updatedFamily.find(p => (p.id || String(p)) === String(personId));
-            const pName = typeof targetPerson === 'string' ? targetPerson : targetPerson?.name;
+            // 🌟 5. แจ้งเตือน Log แอดมิน (ใส่รายละเอียด ยอดเดิม -> ยอดใหม่)
             if (typeof logAdminAction === 'function') {
-                logAdminAction(`แก้ไขยอดเงินของ "${pName}" (บ้านเลขที่ ${houseMember.houseNo}) เป็น ฿${newBalance.toLocaleString()}`);
+                logAdminAction(`แก้ไขยอดเงินของ "${pName}" (บ้านเลขที่ ${houseMember.houseNo}) จากเดิม ฿${oldBalance.toLocaleString()} เปลี่ยนเป็น ฿${newBalance.toLocaleString()}`);
             }
 
             setEditingPersonId(null);
+
+            // รีเฟรชข้อมูลให้ตารางอัปเดตทันที
             if (typeof refreshData === 'function') await refreshData();
 
         } catch (error) {
+            console.error("Error saving balance:", error);
             alert("❌ เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่");
         }
     };
-
     //  ฟังก์ชันจัดการการหักเงินแบบกลุ่ม (Bulk Deduct - ระดับบุคคล)
     const handleBulkSave = async (checkedPersonKeys, deductAmount, villageId) => {
         if (!confirm(`⚠️ ยืนยันการหักเงิน ฿${deductAmount} จากบุคคลที่เลือกจำนวน ${checkedPersonKeys.length} คน?`)) return;
@@ -2363,125 +2385,7 @@ const HistoryView = ({ transactions, villages, db, refreshData, setCurrentPage, 
         </div>
     );
 };
-// === หน้าจอประวัติแอดมิน (AdminLogsView) โฉมใหม่ ===
-const AdminLogsView = ({ adminLogs, db, refreshData, setCurrentPage }) => {
-    const [selectedOperator, setSelectedOperator] = useState('all');
-    const [searchTerm, setSearchTerm] = useState('');
-    // 🌟 เปลี่ยนชื่อตัวแปรหน้าตารางเป็น tablePage เพื่อไม่ให้ตีกับหน้าเว็บหลัก
-    const [tablePage, setTablePage] = useState(1);
-    const itemsPerPage = 15;
 
-    const uniqueOperators = [...new Set(adminLogs.map(log => log.operator))];
-
-    const filteredLogs = adminLogs.filter(log => {
-        const matchOperator = selectedOperator === 'all' || log.operator === selectedOperator;
-        const matchSearch = String(log.action).toLowerCase().includes(searchTerm.toLowerCase());
-        return matchOperator && matchSearch;
-    });
-
-    const totalPages = Math.max(1, Math.ceil(filteredLogs.length / itemsPerPage));
-    const currentLogs = filteredLogs.slice((tablePage - 1) * itemsPerPage, tablePage * itemsPerPage);
-
-    // รีเซ็ตหน้าตารางเมื่อเปลี่ยนคำค้นหา
-    React.useEffect(() => { setTablePage(1); }, [selectedOperator, searchTerm]);
-
-    const handleExportExcel = () => {
-        const headers = ['ลำดับ', 'วันที่', 'เวลา', 'ผู้ดำเนินการ', 'รายละเอียดกิจกรรมที่ทำ'];
-        const dataRows = filteredLogs.map((log, i) => [i + 1, log.date, log.time, log.operator, log.action]);
-        const rows = [headers, ...dataRows];
-        const csvContent = "\uFEFF" + rows.map(e => e.map(item => `"${String(item).replace(/"/g, '""')}"`).join(",")).join("\n");
-        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-        const link = document.createElement("a");
-        link.href = URL.createObjectURL(blob);
-        link.download = `ประวัติงาน_${selectedOperator === 'all' ? 'ทั้งหมด' : selectedOperator}_${new Date().toISOString().split('T')[0]}.csv`;
-        link.click();
-    };
-
-    const handleClearLogs = async () => {
-        if (!confirm(`ยืนยันการลบประวัติที่เลือก?`)) return;
-        try {
-            for (const log of filteredLogs) {
-                await deleteDoc(doc(db, "admin_logs", String(log.id)));
-            }
-            alert("🗑️ ลบสำเร็จ!");
-            if (typeof refreshData === 'function') refreshData();
-        } catch (error) {
-            alert("❌ ลบผิดพลาด");
-        }
-    };
-
-    return (
-        <div className="space-y-6 animate-in fade-in duration-300 text-slate-700">
-            <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
-                    <h2 className="font-bold text-2xl text-slate-800 flex items-center gap-2"><FileSpreadsheet className="text-red-500" /> ประวัติกิจกรรมการทำงาน</h2>
-                    <p className="text-sm text-slate-500 mt-1">ตรวจสอบการบันทึก ลบ หรือแก้ไขข้อมูลของเจ้าหน้าที่</p>
-                </div>
-                <div className="flex gap-2 w-full md:w-auto flex-wrap sm:flex-nowrap">
-                    {/*  ปุ่มกลับหน้าแอดมิน */}
-                    {setCurrentPage && <button onClick={() => setCurrentPage('admin')} className="flex-1 md:flex-none bg-slate-100 text-slate-600 hover:bg-slate-200 px-4 py-2.5 rounded-xl font-bold transition shadow-sm text-sm whitespace-nowrap">← กลับแผงจัดการ</button>}
-                    {filteredLogs.length > 0 && <button onClick={handleExportExcel} className="flex-1 md:flex-none bg-emerald-50 text-emerald-700 border border-emerald-200 px-4 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-emerald-600 hover:text-white transition shadow-sm text-sm"><Download size={16} /> Export</button>}
-                    {filteredLogs.length > 0 && <button onClick={handleClearLogs} className="flex-1 md:flex-none bg-red-50 text-red-600 border border-red-200 px-4 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-red-600 hover:text-white transition shadow-sm text-sm">🗑️ ล้างข้อมูล</button>}
-                </div>
-            </div>
-
-            {/* แถบตัวกรองและค้นหา */}
-            <div className="flex flex-col sm:flex-row gap-4">
-                <select value={selectedOperator} onChange={(e) => setSelectedOperator(e.target.value)} className="bg-white border border-slate-200 p-3 rounded-2xl text-sm font-bold outline-none w-full sm:w-64 cursor-pointer shadow-sm focus:border-red-400">
-                    <option value="all">👤 ดูแอดมินทุกคน</option>
-                    {uniqueOperators.map((op, i) => <option key={i} value={op}>{op}</option>)}
-                </select>
-                <div className="relative flex-1">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
-                    <input
-                        type="text" placeholder="ค้นหากิจกรรมที่บันทึก (เช่น หักเงิน, ลบ)..."
-                        value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full bg-white border border-slate-200 pl-11 pr-4 py-3 rounded-2xl text-sm font-bold outline-none shadow-sm focus:border-red-400"
-                    />
-                </div>
-            </div>
-
-            {/* รายการประวัติแบบ Feed */}
-            <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden min-h-[400px] flex flex-col">
-                <div className="flex-grow divide-y divide-slate-100">
-                    {currentLogs.length > 0 ? currentLogs.map((log) => (
-                        <div key={log.id} className="p-4 sm:p-5 hover:bg-slate-50 transition-colors flex flex-col md:flex-row gap-4 md:items-center">
-                            <div className="w-full md:w-1/5 shrink-0 flex flex-col gap-1">
-                                <span className="text-xs font-black text-red-500 bg-red-50 w-fit px-2 py-1 rounded-md">{log.date}</span>
-                                <span className="font-bold text-slate-500 text-sm">{log.time}</span>
-                            </div>
-
-                            <div className="w-full md:w-4/5 flex flex-col gap-1 border-l-2 border-slate-100 pl-0 md:pl-4">
-                                <div className="flex items-center gap-2">
-                                    <span className="bg-slate-800 text-white text-[10px] px-2 py-1 rounded-md shadow-sm font-bold">
-                                        แอดมิน: {log.operator}
-                                    </span>
-                                </div>
-                                <p className="font-bold text-base text-slate-700 mt-1 leading-relaxed">
-                                    {log.action}
-                                </p>
-                            </div>
-                        </div>
-                    )) : (
-                        <div className="text-center text-slate-400 py-16 flex flex-col items-center">
-                            <FileSpreadsheet size={48} className="mb-3 opacity-20" />
-                            <p className="font-bold">ไม่พบประวัติกิจกรรมแอดมิน</p>
-                        </div>
-                    )}
-                </div>
-
-                {/* Pagination */}
-                {filteredLogs.length > itemsPerPage && (
-                    <div className="bg-slate-50 border-t border-slate-100 p-4 flex items-center justify-between">
-                        <button onClick={() => setTablePage(prev => Math.max(prev - 1, 1))} disabled={tablePage === 1} className="px-4 py-2 bg-white border rounded-xl font-bold text-sm text-slate-600 disabled:opacity-50 hover:bg-slate-100 transition-colors">ก่อนหน้า</button>
-                        <span className="font-bold text-slate-500 text-sm">หน้า {tablePage}/{totalPages}</span>
-                        <button onClick={() => setTablePage(prev => Math.min(prev + 1, totalPages))} disabled={tablePage === totalPages} className="px-4 py-2 bg-white border rounded-xl font-bold text-sm text-slate-600 disabled:opacity-50 hover:bg-slate-100 transition-colors">ถัดไป</button>
-                    </div>
-                )}
-            </div>
-        </div>
-    );
-};
 const MemberSummaryView = ({ members, villages, setCurrentPage, globalPrices }) => {
     const [selectedCategory, setSelectedCategory] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
@@ -2569,14 +2473,31 @@ const MemberSummaryView = ({ members, villages, setCurrentPage, globalPrices }) 
             return;
         }
 
-        const headers = ['หมวดหมู่', 'บ้านเลขที่', 'ชื่อสมาชิก', 'การคัดแยก', ...wasteTypes, 'นน.รวม', 'ยอดเงิน', 'คาร์บอน'];
+        // 🌟 1. เพิ่ม 'สิทธิ์สวัสดิการ' เข้าไปในหัวตาราง
+        const headers = ['หมวดหมู่', 'บ้านเลขที่', 'ชื่อสมาชิก', 'การคัดแยก', 'สิทธิ์สวัสดิการ', ...wasteTypes, 'นน.รวม', 'ยอดเงิน', 'คาร์บอน'];
+
         const rows = dataToExport.map(m => {
             let rowW = 0;
-            const wCols = wasteTypes.map(t => { const v = Number(m.wasteData?.[t] || 0); rowW += v; return v; });
-            return [m.category, m.houseNo, m.name, m.isSorted ? '✅ แยก' : '❌ ไม่แยก', ...wCols, rowW.toFixed(2), m.balance, m.credit];
+            const wCols = wasteTypes.map(t => {
+                const v = Number(m.wasteData?.[t] || 0);
+                rowW += v;
+                return v;
+            });
+
+            return [
+                m.category,
+                `="${m.houseNo}"`, // 🌟 2. ใช้สูตร ="..." บังคับให้ Excel มองเป็นข้อความ ห้ามแปลงเป็นวันที่
+                m.name,
+                m.isSorted ? '✅ แยก' : '❌ ไม่แยก',
+                m.hasWelfare ? '🎁 มี' : '❌ ไม่มี', // 🌟 3. ดึงข้อมูลสวัสดิการมาแสดงผล
+                ...wCols,
+                rowW.toFixed(2),
+                m.balance,
+                m.credit
+            ];
         });
 
-        const csvContent = "\uFEFF" + [headers, ...rows].map(e => e.join(",")).join("\n");
+        const csvContent = "\uFEFF" + [headers, ...rows].map(e => e.map(item => `"${String(item).replace(/"/g, '""')}"`).join(",")).join("\n");
         const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
         const link = document.createElement("a");
         link.href = URL.createObjectURL(blob);
@@ -2585,7 +2506,6 @@ const MemberSummaryView = ({ members, villages, setCurrentPage, globalPrices }) 
 
         setShowExportModal(false);
     };
-
     const toggleExportCategory = (category) => {
         setExportSelectedCategories(prev => {
             if (category === 'all') return ['all'];
@@ -3468,7 +3388,16 @@ const AddMemberModal = ({ initialLat, initialLng, villageData, onSave, onClose, 
                                         <div className="flex items-center gap-3 w-full sm:w-1/2 justify-end">
                                             <div className="relative w-full">
                                                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">฿</span>
-                                                <input type="number" step="any" placeholder="0" value={person.balance || ''} onChange={(e) => updateMemberField(index, 'balance', parseFloat(e.target.value) || 0)} className="w-full border-2 border-slate-100 pl-10 pr-4 py-2.5 rounded-xl outline-none font-black text-amber-600 focus:border-amber-400 bg-slate-50 transition text-right text-lg" />
+                                                <input
+                                                    type="number"
+                                                    step="any"
+                                                    min="0"
+                                                    placeholder="0"
+                                                    value={person.balance ?? ''}
+                                                    onChange={(e) => {
+                                                        const val = parseFloat(e.target.value) || 0;
+                                                        updateMemberField(index, 'balance', Math.max(0, val));
+                                                    }} className="w-full border-2 border-slate-100 pl-10 pr-4 py-2.5 rounded-xl outline-none font-black text-amber-600 focus:border-amber-400 bg-slate-50 transition text-right text-lg" />
                                             </div>
                                             {newMember.familyMembers.length > 1 && (
                                                 <button type="button" onClick={() => removeMemberField(index)} className="p-3 text-slate-400 hover:bg-red-50 hover:text-red-500 rounded-xl transition shrink-0 bg-slate-50">
@@ -3930,12 +3859,13 @@ const RecordWasteView = ({ members, villages, setMembers, setVillages, db, logAd
 // =========================================================================
 // 📥 หน้าจอระบบนำเข้าข้อมูลสมาชิกจากไฟล์ Excel/CSV (ImportDataView) - Premium Native Page
 // =========================================================================
-const ImportDataView = ({ db, villages, refreshData, setCurrentPage, logAdminAction, globalPrices }) => {
+const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPage, logAdminAction, globalPrices }) => {
     const [step, setStep] = useState(1); // 1 = อัปโหลด, 2 = รีเช็ค Preview, 3 = โหลดบันทึก
     const [previewHouses, setPreviewHouses] = useState([]);
     const [previewPage, setPreviewPage] = useState(1);
     const [uploadProgress, setUploadProgress] = useState(0);
     const [summary, setSummary] = useState({ houses: 0, persons: 0, money: 0 });
+    const [importedFileName, setImportedFileName] = useState("");
 
     const itemsPerPage = 10;
 
@@ -3966,7 +3896,9 @@ const ImportDataView = ({ db, villages, refreshData, setCurrentPage, logAdminAct
 
         const csvContent = "\uFEFF" + headers.join(',') + "\n" + exampleRow.join(',');
 
-        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const BOM = "\uFEFF";
+        const blob = new Blob([BOM, csvContent], { type: "text/csv;charset=utf-8;" });
+
         const link = document.createElement("a");
         link.href = URL.createObjectURL(blob);
         link.download = "template_import_members.csv";
@@ -3977,19 +3909,29 @@ const ImportDataView = ({ db, villages, refreshData, setCurrentPage, logAdminAct
     const handleFileChange = (e) => {
         const file = e.target.files[0];
         if (!file) return;
-
+        setImportedFileName(file.name);
         const reader = new FileReader();
         reader.onload = function (event) {
             const text = event.target.result;
             const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
-            if (lines.length <= 1) return alert("❌ ไฟล์ว่างเปล่า หรือไม่มีข้อมูลสมาชิก");
+            if (lines.length <= 1) return alert("❌ ไฟล์ว่างเปล่า หรือไม่มีข้อมูล");
 
-            // เริ่มอ่านจากแถวที่ 2 (ข้ามแถวตกแต่ง)
-            const headers = lines[1].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+            // หาว่าบรรทัดไหนคือหัวข้อคอลัมน์ (ดักจับคำว่า 'บ้านเลขที่')
+            let headerIndex = 0;
+            for (let i = 0; i < lines.length; i++) {
+                if (lines[i].includes('บ้านเลขที่')) {
+                    headerIndex = i; break;
+                }
+            }
+
+            // ตรวจหาตัวคั่น (Comma หรือ Semicolon)
+            const delimiter = lines[headerIndex].includes(';') ? ';' : ',';
+            const headers = lines[headerIndex].split(delimiter).map(h => h.trim().replace(/^"|"$/g, ''));
             const rowsData = [];
 
-            for (let i = 2; i < lines.length; i++) {
-                const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+            // เริ่มอ่านข้อมูลบรรทัดถัดจากหัวข้อ
+            for (let i = headerIndex + 1; i < lines.length; i++) {
+                const values = lines[i].split(delimiter).map(v => v.trim().replace(/^"|"$/g, ''));
                 if (values.length < 3) continue;
 
                 const rowObj = {};
@@ -3998,14 +3940,23 @@ const ImportDataView = ({ db, villages, refreshData, setCurrentPage, logAdminAct
                 });
                 rowsData.push(rowObj);
             }
+
+            if (rowsData.length === 0) return alert("❌ ไม่พบข้อมูลสมาชิกในไฟล์");
             processImportData(rowsData);
         };
         reader.readAsText(file, 'UTF-8');
     };
 
-    // ฟังก์ชันประมวลผลข้อมูล
+    // 🌟 2. ฟังก์ชันประมวลผล (อัปเกรด: ค้นหาคนเดิมแล้วบวกยอดเพิ่ม)
     const processImportData = (data) => {
+        // ดึงข้อมูลบ้านทั้งหมดที่มีในระบบมาเป็นฐานก่อน
         const houseMap = {};
+        if (members && members.length > 0) {
+            members.forEach(m => {
+                houseMap[m.houseNo] = JSON.parse(JSON.stringify(m)); // Deep copy ป้องกันกระทบข้อมูลจริง
+            });
+        }
+
         let totalPersons = 0;
         let totalMoney = 0;
 
@@ -4030,6 +3981,7 @@ const ImportDataView = ({ db, villages, refreshData, setCurrentPage, logAdminAct
                 }
             });
 
+            // ถ้าไม่มีบ้านเลขที่นี้ในระบบ ให้สร้างบ้านหลังใหม่
             if (!houseMap[houseNo]) {
                 const vMatch = category.match(/\d+/);
                 houseMap[houseNo] = {
@@ -4043,21 +3995,38 @@ const ImportDataView = ({ db, villages, refreshData, setCurrentPage, logAdminAct
                 };
             }
 
-            // เนื่องจากเป็น Import แบบเพียวๆ ในกรณีเริ่มระบบใหม่ เราจะ push ใส่เลย
-            houseMap[houseNo].familyMembers.push({
-                id: String(Date.now() + index + '_p'),
-                name: name,
-                balance: balanceToAdd,
-                credit: Number(carbonToAdd.toFixed(4)),
-                wasteData: wasteToAdd,
-                hasWelfare: hasWelfare,
-                isSorted: isSorted
-            });
+            const targetHouse = houseMap[houseNo];
+            let existingPerson = targetHouse.familyMembers.find(p => p.name === name);
+
+            if (existingPerson) {
+                // 🟢 กรณีมีคนชื่อนี้อยู่แล้ว -> บวกยอดเงินและขยะเพิ่มเข้าไป (Increment)
+                existingPerson.balance = (Number(existingPerson.balance) || 0) + balanceToAdd;
+                existingPerson.credit = (Number(existingPerson.credit) || 0) + Number(carbonToAdd.toFixed(4));
+                existingPerson.hasWelfare = existingPerson.hasWelfare || hasWelfare;
+                existingPerson.isSorted = existingPerson.isSorted || isSorted;
+
+                if (!existingPerson.wasteData) existingPerson.wasteData = {};
+                Object.keys(wasteToAdd).forEach(wType => {
+                    existingPerson.wasteData[wType] = (existingPerson.wasteData[wType] || 0) + wasteToAdd[wType];
+                });
+            } else {
+                // 🔵 กรณีไม่มีคนชื่อนี้ -> เพิ่มเป็นสมาชิกคนใหม่เข้าบ้านไปเลย
+                targetHouse.familyMembers.push({
+                    id: String(Date.now() + index + '_p'),
+                    name: name,
+                    balance: balanceToAdd,
+                    credit: Number(carbonToAdd.toFixed(4)),
+                    wasteData: wasteToAdd,
+                    hasWelfare: hasWelfare,
+                    isSorted: isSorted
+                });
+            }
 
             totalPersons += 1;
             totalMoney += balanceToAdd;
         });
 
+        // คำนวณยอดรวมของบ้านใหม่ทั้งหมด
         const finalHouses = Object.values(houseMap).map(house => {
             let houseBalance = 0;
             let houseCredit = 0;
@@ -4065,8 +4034,8 @@ const ImportDataView = ({ db, villages, refreshData, setCurrentPage, logAdminAct
             const houseWasteAgg = {};
 
             house.familyMembers.forEach(p => {
-                houseBalance += p.balance;
-                houseCredit += p.credit;
+                houseBalance += (Number(p.balance) || 0);
+                houseCredit += (Number(p.credit) || 0);
                 if (p.isSorted) houseSorted = true;
 
                 Object.entries(p.wasteData || {}).forEach(([type, weight]) => {
@@ -4083,12 +4052,13 @@ const ImportDataView = ({ db, villages, refreshData, setCurrentPage, logAdminAct
             };
         });
 
-        setPreviewHouses(finalHouses);
-        setSummary({ houses: finalHouses.length, persons: totalPersons, money: totalMoney });
+        // 🌟 กรองเอาเฉพาะ "บ้านที่มีการเคลื่อนไหว/อัปเดต" ในไฟล์รอบนี้มาแสดงเท่านั้น
+        const updatedHousesOnly = finalHouses.filter(h => data.some(r => r['บ้านเลขที่'] === h.houseNo));
+
+        setPreviewHouses(updatedHousesOnly);
+        setSummary({ houses: updatedHousesOnly.length, persons: totalPersons, money: totalMoney });
         setStep(2);
     };
-
-    // ฟังก์ชันยิงข้อมูลขึ้น Cloud แบบ Batch
     const handleConfirmImport = async () => {
         if (previewHouses.length === 0) return;
         setStep(3);
@@ -4098,23 +4068,25 @@ const ImportDataView = ({ db, villages, refreshData, setCurrentPage, logAdminAct
             const chunkSize = 25;
             for (let i = 0; i < previewHouses.length; i += chunkSize) {
                 const chunk = previewHouses.slice(i, i + chunkSize);
+                // ใช้ setDoc เพื่อบันทึก/อัปเดตข้อมูลบ้านทั้งหลัง
                 await Promise.all(chunk.map(house => setDoc(doc(db, "members", String(house.id)), house)));
                 const progress = Math.round(((i + chunk.length) / previewHouses.length) * 100);
                 setUploadProgress(progress);
             }
 
-            logAdminAction(`นำเข้าข้อมูลสมาชิกระบบจาก Excel สำเร็จ: ${summary.houses} หลัง (${summary.persons} คน)`);
-            alert(`🎉 นำเข้าข้อมูลสำเร็จเรียบร้อยแล้วทั้งสิ้น ${summary.houses} หลังคาเรือน!`);
+            if (typeof logAdminAction === 'function') {
+                logAdminAction(`นำเข้าข้อมูลจากไฟล์ ${importedFileName} : ${summary.houses} หลัง (${summary.persons} คน)`);
+            }
+            alert(`🎉 นำเข้าข้อมูล จาก "${importedFileName}" สำเร็จเรียบร้อยแล้วทั้งสิ้น ${summary.houses} หลัง`);
 
-            if (typeof refreshData === 'function') await refreshData();
-            setCurrentPage('members');
+            if (typeof refreshData === 'function') refreshData();
+            setCurrentPage('members'); // กลับไปหน้าสมาชิก
         } catch (err) {
             console.error(err);
             alert("❌ เกิดข้อผิดพลาดระหว่างอัปโหลด กรุณาตรวจสอบสัญญาณอินเทอร์เน็ต");
             setStep(2);
         }
     };
-
     const totalPages = Math.max(1, Math.ceil(previewHouses.length / itemsPerPage));
     const currentViewHouses = previewHouses.slice((previewPage - 1) * itemsPerPage, previewPage * itemsPerPage);
 
@@ -5043,6 +5015,7 @@ const App = () => {
                         db={db}
                         logAdminAction={logAdminAction}
                         setCurrentPage={setCurrentPage}
+                        refreshData={refreshData}
                     />
                 );
             case 'record_waste':
@@ -5063,6 +5036,7 @@ const App = () => {
                 return (
                     <ImportDataView
                         db={db}
+                        members={members}
                         villages={villages}
                         refreshData={refreshData}
                         setCurrentPage={setCurrentPage}
