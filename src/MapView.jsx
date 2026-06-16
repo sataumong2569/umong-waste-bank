@@ -9,7 +9,7 @@ const MapView = ({ currentLocation, members, findMyLocation, onPinLocation, isLo
     const clusterGroupRef = useRef(null);
     const myMarkerRef = useRef(null);
     const [filterId, setFilterId] = useState('all');
-    const [isMapReady, setIsMapReady] = useState(false); // 👈 เพิ่มสถานะนี้เพื่อคุมการวาดหมุด
+    const [isMapReady, setIsMapReady] = useState(false); // เพิ่มสถานะนี้เพื่อคุมการวาดหมุด
 
     const displayedMembers = useMemo(() => {
         if (filterId === 'all') return members;

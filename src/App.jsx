@@ -62,9 +62,17 @@ const MobileNavItem = ({ active, onClick, label, icon }) => (
  * @param {Array} wasteTypeData - ข้อมูลน้ำหนักขยะแยกตามประเภทสำหรับกราฟแท่ง
  * @param {Array} members - ข้อมูลสมาชิกเพื่อนำมาคำนวณสัดส่วนการคัดแยก
  */
-const DashboardView = ({ stats, villageData, wasteTypeData, members, setCurrentPage }) => {
+const DashboardView = ({ stats, villageData, wasteTypeData, members, setCurrentPage, selectedPeriod, setSelectedPeriod, historicalSummary }) => {
+    const isHistorical = selectedPeriod?.month !== 'current';
+    const histData = historicalSummary || {};
     // 1. สัดส่วนการคัดแยกขยะ (อัปเดตให้นับจาก "รายบุคคล")
     const separationStats = useMemo(() => {
+        if (isHistorical) {
+            return [
+                { name: 'คัดแยกประเภทขยะแล้ว', value: histData.sortedPersons || 0, color: '#16a34a' },
+                { name: 'ยังไม่คัดแยกประเภทขยะ', value: histData.unsortedPersons || 0, color: '#ef4444' }
+            ];
+        }
         // ระบบป้องกัน: ถ้ายังไม่มีข้อมูลสมาชิก ให้ค่าเป็น 0 ทั้งหมดก่อน
         if (!members) return [
             { name: 'คัดแยกประเภทขยะแล้ว', value: 0, color: '#16a34a' },
@@ -99,6 +107,13 @@ const DashboardView = ({ stats, villageData, wasteTypeData, members, setCurrentP
     }, [members]);
     // 2. สัดส่วนการเข้าร่วมโครงการ (วงกลม 2)
     const participationStats = useMemo(() => {
+        if (isHistorical) {
+            const participatedCount = histData.totalHouses || 0;
+            return [
+                { name: 'เข้าร่วมโครงการแล้ว', value: participatedCount, color: '#29c21bff' },
+                { name: 'ยังไม่ได้เข้าร่วม', value: 600 - participatedCount, color: '#8e978fff' }
+            ];
+        }
         const participatedCount = members ? members.length : 0;
         const notParticipatedCount = 600; // ตั้งค่าเป้าหมายไว้ที่ 600 ก่อน
         return [
@@ -109,6 +124,12 @@ const DashboardView = ({ stats, villageData, wasteTypeData, members, setCurrentP
 
     // 3. แนวโน้มการเติบโตของสมาชิก (ใช้ข้อมูลวันที่จริงจาก ID และนับ "รายบุคคล")
     const trendData = useMemo(() => {
+        if (isHistorical) {
+            return [
+                { name: 'เดือนก่อน', amount: histData.previousMonthPersons || 0, color: '#106e18ff' },
+                { name: 'เดือนนี้', amount: histData.totalPersons || 0, color: '#19ac19ff' }
+            ];
+        }
         // ถ้ายังไม่มีข้อมูลเลย ให้แสดง 0
         if (!members || members.length === 0) return [
             { name: 'เดือนก่อน', amount: 0, color: '#106e18ff' },
@@ -153,6 +174,56 @@ const DashboardView = ({ stats, villageData, wasteTypeData, members, setCurrentP
 
     return (
         <div className="space-y-6">
+            {/* ── 🌟 แถบเลือกเดือน/ปี สำหรับดูสถิตีย้อนหลัง (Dropdown) ── */}
+            <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-100 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                    <h3 className="font-black text-lg text-slate-800 flex items-center gap-2">
+                        📅 ช่วงเวลาที่แสดงผลสถิติ
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5 font-bold">
+                        {selectedPeriod.month === 'current' ? 'กำลังแสดงข้อมูลภาพรวม Real-time ณ ปัจจุบัน' : `กำลังแสดงข้อมูลย้อนหลังของเดือน ${selectedPeriod.month} ปี ${selectedPeriod.year}`}
+                    </p>
+                </div>
+
+                <div className="flex gap-2 w-full sm:w-auto">
+                    {/* ตัวเลือกเดือน */}
+                    <select
+                        value={selectedPeriod.month}
+                        onChange={(e) => {
+                            const m = e.target.value;
+                            setSelectedPeriod(prev => ({ ...prev, month: m, ...(m === 'current' && { year: 'current' }) }));
+                        }}
+                        className="flex-1 sm:flex-none bg-slate-50 border border-slate-200 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-700 outline-none cursor-pointer focus:border-emerald-500"
+                    >
+                        <option value="current">เดือนปัจจุบัน (Real-time)</option>
+                        <option value="มกราคม">มกราคม</option>
+                        <option value="กุมภาพันธ์">กุมภาพันธ์</option>
+                        <option value="มีนาคม">มีนาคม</option>
+                        <option value="เมษายน">เมษายน</option>
+                        <option value="พฤษภาคม">พฤษภาคม</option>
+                        <option value="มิถุนายน">มิถุนายน</option>
+                        <option value="กรกฎาคม">กรกฎาคม</option>
+                        <option value="สิงหาคม">สิงหาคม</option>
+                        <option value="กันยายน">กันยายน</option>
+                        <option value="ตุลาคม">ตุลาคม</option>
+                        <option value="พฤศจิกายน">พฤศจิกายน</option>
+                        <option value="ธันวาคม">ธันวาคม</option>
+                    </select>
+
+                    {/* ตัวเลือกปี (จะยอมให้เลือกถ้าไม่ได้เลือกเป็นเดือนปัจจุบัน) */}
+                    {selectedPeriod.month !== 'current' && (
+                        <select
+                            value={selectedPeriod.year}
+                            onChange={(e) => setSelectedPeriod(prev => ({ ...prev, year: e.target.value }))}
+                            className="flex-1 sm:flex-none bg-slate-50 border border-slate-200 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-700 outline-none cursor-pointer focus:border-emerald-500 animate-in fade-in zoom-in-95 duration-200"
+                        >
+                            {Array.from({ length: 8 }, (_, i) => new Date().getFullYear() + 543 - 2 + i).map(year => (
+                                <option key={year} value={year}>{year}</option>
+                            ))}
+                        </select>
+                    )}
+                </div>
+            </div>
             {/* ส่วนที่ 1: การแสดงผลสถิติ 5 กล่องด้านบน (สรุปตัวเลขสำคัญ) */}
             <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
                 {stats && stats.length > 0 ? (
@@ -499,7 +570,7 @@ const DashboardView = ({ stats, villageData, wasteTypeData, members, setCurrentP
                         </ResponsiveContainer>
                     ) : (
                         <div className="flex items-center justify-center h-full text-slate-400">
-                            กำลังโหลดข้อมูล...
+                            {isHistorical && Object.keys(histData).length === 0 ? "ไม่มีประวัติการฝากขยะในเดือนย้อนหลังที่เลือก" : "กำลังโหลดข้อมูล..."}
                         </div>
                     )}
                 </div>
@@ -508,6 +579,7 @@ const DashboardView = ({ stats, villageData, wasteTypeData, members, setCurrentP
     );
 };
 const MemoizedDashboardView = React.memo(DashboardView);
+
 // =========================================================================
 // 🪙 หน้าจอราคารับซื้อขยะ (PriceView) โฉมใหม่ เชื่อม Cloud + เพิ่มลดขยะได้
 // =========================================================================
@@ -1283,7 +1355,7 @@ const MembersView = ({ members, setMembers, villages, setVillages, isLoggedIn, l
                         </div>
                         {isLoggedIn && setCurrentPage && (
                             <button onClick={() => setCurrentPage('admin')} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold transition-colors text-sm">
-                                ← กลับหน้าแผงจัดการ
+                                ← ย้อนกลับ
                             </button>
                         )}
                     </div>
@@ -1940,7 +2012,7 @@ const ManageBalanceView = ({ members, villages, setMembers, db, logAdminAction, 
                     onClick={() => setCurrentPage('admin')}
                     className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold transition-colors text-sm"
                 >
-                    ← กลับหน้าแผงจัดการ
+                    ← ย้อนกลับ
                 </button>
             </div>
 
@@ -2218,7 +2290,7 @@ const HistoryView = ({ transactions, villages, db, refreshData, setCurrentPage, 
     }, [filteredTx]);
 
     const handleExportExcel = () => {
-        const headers = ['หมวดหมู่', 'บ้านเลขที่', 'ชื่อสมาชิก', 'อัปเดตล่าสุด', ...wasteTypes, 'รวมน้ำหนัก (กก.)', 'ยอดเงิน (บาท)', 'คาร์บอน (kgCO2e)'];
+        const headers = ['อัปเดตล่าสุด', 'หมวดหมู่', 'บ้านเลขที่', 'ชื่อสมาชิก', ...wasteTypes, 'รวมน้ำหนัก (กก.)', 'ยอดเงิน (บาท)', 'คาร์บอน (kgCO2e)'];
         const dataRows = filteredTx.map(tx => {
             let rowWeight = 0;
             const wasteDataRow = wasteTypes.map(type => {
@@ -2283,7 +2355,7 @@ const HistoryView = ({ transactions, villages, db, refreshData, setCurrentPage, 
                     <h2 className="font-black text-2xl text-slate-800 tracking-tight">ตารางประวัติฝาก (เดือน{currentMonthDisplay})</h2>
                     <p className="text-sm text-slate-500 font-bold mt-1">แสดงประวัติการบันทึกขยะแยกตามรายรายการธุรกรรมจริง</p>
                 </div>
-                <div className="flex gap-2 w-full sm:w-auto justify-end">
+                <div className="flex flex-wrap gap-2 w-full md:w-auto">
                     {setCurrentPage && <button onClick={() => setCurrentPage('admin')} className="bg-slate-100 text-slate-600 hover:bg-slate-200 px-5 py-2.5 rounded-xl font-bold text-sm transition whitespace-nowrap">← ย้อนกลับ</button>}
                     {filteredTx.length > 0 && (
                         <>
@@ -3866,6 +3938,11 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
     const [uploadProgress, setUploadProgress] = useState(0);
     const [summary, setSummary] = useState({ houses: 0, persons: 0, money: 0 });
     const [importedFileName, setImportedFileName] = useState("");
+    const ThaiMonths = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+    const now = new Date();
+    const [importMonth, setImportMonth] = useState(ThaiMonths[now.getMonth()]);
+    const [importYear, setImportYear] = useState(String(now.getFullYear() + 543));
+    const [monthlySummaryPayload, setMonthlySummaryPayload] = useState(null);
 
     const itemsPerPage = 10;
 
@@ -4054,7 +4131,43 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
 
         // 🌟 กรองเอาเฉพาะ "บ้านที่มีการเคลื่อนไหว/อัปเดต" ในไฟล์รอบนี้มาแสดงเท่านั้น
         const updatedHousesOnly = finalHouses.filter(h => data.some(r => r['บ้านเลขที่'] === h.houseNo));
+        let sumWaste = 0;
+        let sumCarbon = 0;
+        let sortedCount = 0;
+        let unsortedCount = 0;
+        const wasteAgg = {};
+        const villageAgg = {};
 
+        data.forEach(row => {
+            const category = row['หมวดหมู่'] || 'หมวดที่ 1';
+            const isSorted = row['การคัดแยก'] === 'มี' || row['การคัดแยก'] === 'ใช่';
+            if (isSorted) sortedCount++; else unsortedCount++;
+
+            if (!villageAgg[category]) villageAgg[category] = { id: category, name: category, realBalance: 0 };
+            villageAgg[category].realBalance += (Number(row['ยอดเงินตั้งต้น']) || 0);
+
+            wasteTypes.forEach(type => {
+                const w = Number(row[type]) || 0;
+                if (w > 0) {
+                    wasteAgg[type] = (wasteAgg[type] || 0) + w;
+                    sumWaste += w;
+                    if (CARBON_MULTIPLIERS[type]) sumCarbon += w * CARBON_MULTIPLIERS[type];
+                }
+            });
+        });
+
+        setMonthlySummaryPayload({
+            topWasteType: Object.entries(wasteAgg).sort((a, b) => b[1] - a[1])[0]?.[0] || '-',
+            totalWaste: sumWaste,
+            totalBalance: totalMoney,
+            totalHouses: updatedHousesOnly.length,
+            totalPersons: totalPersons,
+            totalCarbon: sumCarbon,
+            sortedPersons: sortedCount,
+            unsortedPersons: unsortedCount,
+            wasteData: wasteAgg,
+            villageData: Object.values(villageAgg)
+        });
         setPreviewHouses(updatedHousesOnly);
         setSummary({ houses: updatedHousesOnly.length, persons: totalPersons, money: totalMoney });
         setStep(2);
@@ -4072,6 +4185,12 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
                 await Promise.all(chunk.map(house => setDoc(doc(db, "members", String(house.id)), house)));
                 const progress = Math.round(((i + chunk.length) / previewHouses.length) * 100);
                 setUploadProgress(progress);
+            }
+
+            // 🌟 3. (แทรกเพิ่มตรงนี้) บันทึกข้อมูลสรุปรายเดือนลงคอลเลกชัน monthly_summaries ทันทีที่อัปโหลดไฟล์เสร็จ
+            if (monthlySummaryPayload) {
+                const docId = `${importYear}_${importMonth}`;
+                await setDoc(doc(db, "monthly_summaries", docId), monthlySummaryPayload);
             }
 
             if (typeof logAdminAction === 'function') {
@@ -4178,9 +4297,45 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
                                 <FileSpreadsheet size={48} />
                             </div>
                             <h3 className="text-3xl font-black text-slate-800 mb-4 tracking-tight">ลากไฟล์มาวาง หรือ เลือกไฟล์</h3>
-                            <p className="text-base text-slate-500 max-w-md mb-10 leading-relaxed font-medium">
+                            <p className="text-base text-slate-500 max-w-md mb-8 leading-relaxed font-medium">
                                 อัปโหลดไฟล์รายชื่อสกุล <span className="font-bold text-blue-600 bg-blue-100/50 px-2 py-1 rounded-md">.csv</span> ระบบจะทำการจัดกลุ่มลูกบ้านและคำนวณคาร์บอนให้อัตโนมัติ
                             </p>
+
+                            {/* 🌟 4. เพิ่ม Dropdown ระบุเดือนและปีของไฟล์ที่จะนำเข้า */}
+                            <div className="flex gap-3 mb-8 w-full max-w-sm mx-auto justify-center z-10 relative">
+                                <select
+                                    value={importMonth}
+                                    onChange={e => setImportMonth(e.target.value)}
+                                    className="flex-1 bg-white border-2 border-slate-200 px-4 py-3 rounded-xl font-bold text-slate-700 outline-none focus:border-blue-500 shadow-sm cursor-pointer text-center"
+                                >
+                                    <option value="มกราคม">มกราคม</option>
+                                    <option value="กุมภาพันธ์">กุมภาพันธ์</option>
+                                    <option value="มีนาคม">มีนาคม</option>
+                                    <option value="เมษายน">เมษายน</option>
+                                    <option value="พฤษภาคม">พฤษภาคม</option>
+                                    <option value="มิถุนายน">มิถุนายน</option>
+                                    <option value="กรกฎาคม">กรกฎาคม</option>
+                                    <option value="สิงหาคม">สิงหาคม</option>
+                                    <option value="กันยายน">กันยายน</option>
+                                    <option value="ตุลาคม">ตุลาคม</option>
+                                    <option value="พฤศจิกายน">พฤศจิกายน</option>
+                                    <option value="ธันวาคม">ธันวาคม</option>
+                                </select>
+                                <select
+                                    value={importYear}
+                                    onChange={e => setImportYear(e.target.value)}
+                                    className="w-32 bg-white border-2 border-slate-200 px-4 py-3 rounded-xl font-bold text-slate-700 outline-none focus:border-blue-500 shadow-sm cursor-pointer text-center"
+                                >
+                                    {Array.from({ length: 8 }).map((_, index) => {
+                                        const calculatedYear = new Date().getFullYear() + 543 - 2 + index;
+                                        return (
+                                            <option key={calculatedYear} value={calculatedYear}>
+                                                {calculatedYear}const [visitorStats
+                                            </option>
+                                        );
+                                    })}
+                                </select>
+                            </div>
 
                             <label className="bg-blue-600 hover:bg-blue-700 text-white font-black px-10 py-5 rounded-2xl shadow-[0_8px_30px_rgba(37,99,235,0.25)] transition-all active:scale-[0.98] hover:-translate-y-1 cursor-pointer text-lg flex items-center gap-3">
                                 <PlusCircle size={24} /> ค้นหาไฟล์จากเครื่อง
@@ -4295,42 +4450,6 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
 };
 const App = () => {
     // --- DATABASE: ส่วนเก็บข้อมูลหลักของแอปพลิเคชัน ---
-    useEffect(() => {
-        const now = new Date();
-        const todayKey = `visit_date_${now.getFullYear()}_${now.getMonth()}_${now.getDate()}`;
-        const monthKey = `visit_month_${now.getFullYear()}_${now.getMonth()}`;
-        const totalKey = `visit_total_counter`;
-
-        // 1. ดึงข้อมูลเก่าที่เคยนับค้างไว้ในเครื่องขึ้นมาตรวจ
-        let currentToday = Number(localStorage.getItem(todayKey)) || 0;
-        let currentMonth = Number(localStorage.getItem(monthKey)) || 0;
-        let currentTotal = Number(localStorage.getItem(totalKey)) || 0;
-
-        // 2. เช็กว่าสิทธิ์การเข้าชมรอบนี้ (Session) ถูกนับไปหรือยังในหน้านี้ เพื่อป้องกันตัวเลขดีดรัวๆ ตอนกดสลับเมนู
-        const hasCountedInSession = sessionStorage.getItem('page_view_counted');
-
-        if (!hasCountedInSession) {
-            currentToday += 1;
-            currentMonth += 1;
-            currentTotal += 1;
-
-            // สั่งอัปเดตลงหน่วยความจำถาวรของเบราว์เซอร์
-            localStorage.setItem(todayKey, currentToday);
-            localStorage.setItem(monthKey, currentMonth);
-            localStorage.setItem(totalKey, currentTotal);
-
-            // ล็อกไว้ว่าเซสชันการเปิดรอบนี้บวกแต้มไปแล้วเรียบร้อยนะ
-            sessionStorage.setItem('page_view_counted', 'true');
-        }
-
-        // 3. ส่งยอดที่นับได้จริงเข้าสู่ระบบสเตตัสเพื่อนำไปพ่นออกหน้าจอ Footer
-        setVisitorStats({
-            today: currentToday,
-            month: currentMonth,
-            total: currentTotal
-        });
-    }, []);
-
     // ฟังก์ชันแกนกลางสำหรับโหลดข้อมูลจาก DB (เรียกใช้เมื่อเปิดเว็บ หรือหลังกดเซฟ)
     const refreshData = async () => {
         try {
@@ -4453,8 +4572,6 @@ const App = () => {
         fetchAllMembersForStats();
     }, []);
 
-
-    // ☁️ ฟังก์ชันสำหรับบันทึกน้ำหนักขยะและยอดเงิน พุ่งขึ้น Firebase (รองรับระดับบุคคล)
     // ☁️ ฟังก์ชันสำหรับบันทึกน้ำหนักขยะและยอดเงิน พุ่งขึ้น Firebase (รองรับระดับบุคคล ป้องกันข้อมูลชนกัน)
     const handleSaveWasteRecord = async (memberId, personId, turnWasteData, turnCredit, addedBalance) => {
         try {
@@ -4570,7 +4687,6 @@ const App = () => {
                 timestamp: serverTimestamp()
             };
             await addDoc(collection(db, "waste_transactions"), newTx);
-
             // รีเฟรชและเคลียร์จอ
             setActivePersonKey(null);
             setCurrentBasket([]);
@@ -4584,10 +4700,11 @@ const App = () => {
         }
     };
 
-    const [expandedMemberId, setExpandedMemberId] = React.useState(null); // ➕ บันทึกว่ากล่องของบ้านหลังไหนกำลังถูกคลิกเปิดดูรายชื่อ
+    const [expandedMemberId, setExpandedMemberId] = React.useState(null); // บันทึกว่ากล่องของบ้านหลังไหนกำลังถูกคลิกเปิดดูรายชื่อ
     // สถานะหน้าจอและเมนู
     const [currentPage, setCurrentPage] = useState('dashboard'); // ควบคุมว่าตอนนี้อยู่หน้าไหน
-    // 🌟 เปลี่ยนการจำสถานะล็อกอิน ให้จำชื่อแอดมินด้วย
+
+    // เปลี่ยนการจำสถานะล็อกอิน ให้จำชื่อแอดมินด้วย
     const [isLoggedIn, setIsLoggedIn] = useState(() => {
         return localStorage.getItem('is_logged_in') === 'true';
     });
@@ -4602,7 +4719,37 @@ const App = () => {
         localStorage.setItem('is_logged_in', status);
     };
     const [isMenuOpen, setIsMenuOpen] = useState(false);        // สถานะการเปิด/ปิดเมนูมือถือ
+    const [selectedPeriod, setSelectedPeriod] = useState({ month: 'current', year: 'current' });
+    const [historicalSummary, setHistoricalSummary] = useState(null);
+    const [prevMonthWaste, setPrevMonthWaste] = useState(null);
 
+    useEffect(() => {
+        const fetchPrevMonthWaste = async () => {
+            const now = new Date();
+            const ThaiMonths = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+
+            let prevMonthIdx = now.getMonth() - 1;
+            let prevYear = now.getFullYear() + 543;
+
+            if (prevMonthIdx < 0) {
+                prevMonthIdx = 11;
+                prevYear -= 1;
+            }
+
+            try {
+                const docId = `${prevYear}_${ThaiMonths[prevMonthIdx]}`;
+                const docSnap = await getDoc(doc(db, "monthly_summaries", docId));
+                if (docSnap.exists()) {
+                    setPrevMonthWaste(docSnap.data().totalWaste || 0);
+                } else {
+                    setPrevMonthWaste(0);
+                }
+            } catch (error) {
+                setPrevMonthWaste(0);
+            }
+        };
+        fetchPrevMonthWaste();
+    }, []);
     // ข้อมูลสมาชิกและตำแหน่ง
     const [members, setMembers] = useState([]);
     const [allMembers, setAllMembers] = useState([]);
@@ -4613,7 +4760,6 @@ const App = () => {
     const [selectedVillage, setSelectedVillage] = useState(null);
     const [editingVillage, setEditingVillage] = useState(null);
     const [showValidationAlert, setShowValidationAlert] = useState(false);
-    const [visitorStats, setVisitorStats] = useState({ today: 0, month: 0, total: 0 });
     const [isPriceEditing, setIsPriceEditing] = useState(false);
     useEffect(() => {
         // ถ้าย้ายไปหน้าอื่นที่ไม่ใช่หน้าตั้งราคา ('prices') ให้ปิดโหมดแก้ไขทันที
@@ -4703,7 +4849,44 @@ const App = () => {
             setMembers(prev => prev.filter(m => m.id !== memberId));
         }
     };
+    // 🌟 ขั้นตอนที่ 2: ฟังก์ชัน Lazy Loading ดึงข้อมูลสรุปรายเดือนย้อนหลังเมื่อมีการเปลี่ยน Dropdown
+    useEffect(() => {
+        const fetchHistoricalSummary = async () => {
+            // ถ้าเลือกเป็น "เดือนปัจจุบัน" ให้ล้างค่าประวัติเก่าออก เพื่อกลับไปใช้ระบบคำนวณสดปกติ
+            if (selectedPeriod.month === 'current') {
+                setHistoricalSummary(null);
+                return;
+            }
 
+            // เปิดป๊อปอัปโหลดสีเขียวกลางหน้าจอ เพื่อบอกให้ผู้ใช้รู้ว่าระบบกำลังดึงข้อมูล
+            setIsLoadingData(true);
+
+            try {
+                // สร้างรหัสเอกสาร (Document ID) เช่น "2568_พฤษภาคม"
+                const docId = `${selectedPeriod.year}_${selectedPeriod.month}`;
+                const summaryRef = doc(db, "monthly_summaries", docId);
+                const docSnap = await getDoc(summaryRef);
+
+                if (docSnap.exists()) {
+                    // ถ้าเจอข้อมูลในคลาวด์ ให้เอามาเก็บไว้ใน State
+                    setHistoricalSummary(docSnap.data());
+                } else {
+                    // ถ้าไม่เจอข้อมูล (แสดงว่าเดือนนั้นยังไม่เคยมีการอัปโหลดข้อมูลย้อนหลัง)
+                    setHistoricalSummary(null);
+                    alert(`📂 ไม่พบข้อมูลสรุปสถิติของเดือน ${selectedPeriod.month} ${selectedPeriod.year} บนระบบ Cloud`);
+                }
+            } catch (error) {
+                console.error("เกิดข้อผิดพลาดในการโหลดสถิตีย้อนหลัง:", error);
+                alert("❌ ไม่สามารถดึงข้อมูลย้อนหลังได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ต");
+                setHistoricalSummary(null);
+            } finally {
+                // ปิดป๊อปอัปโหลดสีเขียวเมื่อทำงานเสร็จ
+                setIsLoadingData(false);
+            }
+        };
+
+        fetchHistoricalSummary();
+    }, [selectedPeriod, db]); // 🌟 ฟังก์ชันนี้จะทำงานอัตโนมัติเฉพาะเมื่อแอดมินเปลี่ยนเดือน/ปี เท่านั้น
     // --- ฟังก์ชัน: ค้นหาตำแหน่งปัจจุบันผ่าน GPS ---
     const findMyLocation = () => {
         if (navigator.geolocation) {
@@ -4965,13 +5148,54 @@ const App = () => {
         }
         setIsLoadingData(false);
     };
+    // 🌟 2. คำนวณน้ำหนักขยะรวม Real-time ของเดือนนี้จาก RAM (เอาไว้ก่อน renderContent)
+    const currentMonthWaste = allMembers.reduce((sum, m) => {
+        return sum + Object.values(m.wasteData || {}).reduce((a, b) => a + (Number(b) || 0), 0);
+    }, 0);
+
+    const wasteDiffPercent = prevMonthWaste && prevMonthWaste > 0
+        ? ((currentMonthWaste - prevMonthWaste) / prevMonthWaste) * 100
+        : 0;
     //* --- renderContent: ฟังก์ชันสำหรับตัดสินใจว่าจะแสดงหน้าจอไหน-- -
     //* ทำหน้าที่เหมือนสวิตช์ไฟ(Switch Case) ตามค่าของตัวแปร currentPage
     const renderContent = () => {
         switch (currentPage) {
-            case 'dashboard':
-                return <MemoizedDashboardView stats={stats} villageData={villageData} wasteTypeData={wasteTypeData} members={allMembers} setCurrentPage={setCurrentPage} />;
+            case 'dashboard': {
+                // 🌟 1. เช็กว่าตอนนี้แอดมินกำลังดูเดือนเก่าอยู่ใช่ไหม? (ถ้า month ไม่ใช่ 'current' แปลว่าดูย้อนหลัง)
+                const isHistorical = selectedPeriod.month !== 'current';
+                const histData = historicalSummary || {}; // ดัก Error เผื่อไม่มีข้อมูลเดือนนั้น
 
+                // 🌟 2. สับรางกล่องสถิติ 5 กล่องด้านบน
+                const displayStats = isHistorical ? [
+                    { label: 'ประเภทขยะมากที่สุด', value: histData.topWasteType || '-', icon: <Database size={28} className="text-yellow-500" /> },
+                    { label: 'ขยะรวมเดือนที่เลือก', value: `${(histData.totalWaste || 0).toLocaleString()} กก.`, icon: <TrendingUp size={28} className="text-yellow-500" /> },
+                    { label: 'ยอดเงินออมรวม', value: `฿${(histData.totalBalance || 0).toLocaleString()}`, icon: <Wallet size={28} className="text-yellow-500" /> },
+                    { label: 'จำนวนครัวเรือน / สมาชิก', value: `${histData.totalHouses || 0} หลัง / ${histData.totalPersons || 0} คน`, icon: <Users size={28} className="text-yellow-500" /> },
+                    { label: 'ลดการปล่อยคาร์บอน', value: <>{Number(histData.totalCarbon || 0).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}<span className="text-xs font-bold text-slate-400 ml-1">kgCO₂e</span></>, icon: <Leaf size={28} className="text-emerald-500" />, hasTooltip: true }
+                ] : stats;
+
+                // 🌟 3. สับรางข้อมูลตารางอันดับหมวด
+                const displayVillageData = isHistorical ? (histData.villageData || []) : villageData;
+
+                // 🌟 4. สับรางข้อมูลกราฟแท่งแยกประเภทขยะ
+                const displayWasteTypeData = isHistorical
+                    ? Object.entries(histData.wasteData || {}).map(([name, amount]) => ({ name, amount }))
+                    : wasteTypeData;
+
+                // 🌟 5. ส่งตัวแปรที่ผ่านการสับรางแล้วออกไปโชว์ที่หน้าจอ
+                return (
+                    <MemoizedDashboardView
+                        stats={displayStats}            // 👈 เปลี่ยนจาก stats เป็น displayStats
+                        villageData={displayVillageData}  // 👈 เปลี่ยนจาก villageData เป็น displayVillageData
+                        wasteTypeData={displayWasteTypeData} // 👈 เปลี่ยนจาก wasteTypeData เป็น displayWasteTypeData
+                        members={allMembers}
+                        setCurrentPage={setCurrentPage}
+                        selectedPeriod={selectedPeriod}
+                        setSelectedPeriod={setSelectedPeriod}
+                        historicalSummary={historicalSummary}
+                    />
+                );
+            } // 👈 สิ้นสุดเคส dashboard ตรงปีกกานี้
             case 'villages':
                 return <VillagesView villageData={villageData} members={allMembers} setSelectedVillage={setSelectedVillage} setCurrentPage={setCurrentPage} isLoggedIn={isLoggedIn} setEditingVillage={setEditingVillage} />;
 
@@ -5292,17 +5516,34 @@ const App = () => {
                 <div className="flex-grow p-4 md:p-8 max-w-[1600px] w-full mx-auto">
                     {renderContent()}
                 </div>
-
-                {/* ── Footer ── */}
-                <footer className="bg-white border-t border-slate-100 py-6 mt-auto">
+                {/* ──  Footer ระบบเปรียบเทียบสถิติขยะ MoM (Month-over-Month) ── */}
+                <footer className="bg-white border-t border-slate-100 py-6 mt-auto z-10 relative"></footer>
+                <footer className="bg-white border-t border-slate-100 py-6 mt-auto z-10 relative">
                     <div className="max-w-7xl mx-auto px-4 text-center text-slate-500 text-sm">
-                        <div className="flex flex-wrap justify-center gap-3 mb-3">
-                            <span className="font-bold text-slate-400 flex items-center">📊 สถิติผู้เข้าชม:</span>
-                            <span className="font-mono bg-slate-50 border border-slate-100 px-3 py-1 rounded-lg text-slate-600 font-bold shadow-sm">วันนี้: {(visitorStats?.today || 0).toLocaleString()}</span>
-                            <span className="font-mono bg-slate-50 border border-slate-100 px-3 py-1 rounded-lg text-slate-600 font-bold shadow-sm">เดือนนี้: {(visitorStats?.month || 0).toLocaleString()}</span>
-                            <span className="font-mono bg-emerald-50 border border-emerald-100 px-3 py-1 rounded-lg font-black text-emerald-600 shadow-sm">รวมทั้งหมด: {(visitorStats?.total || 0).toLocaleString()} รอบ</span>
+                        <div className="flex flex-wrap justify-center items-center gap-6 mb-4">
+
+                            {/* ส่วนเปรียบเทียบยอดขยะ (คำนวณเปรียบเทียบอัตโนมัติ) */}
+                            <div className="flex items-center gap-2">
+                                <span className="font-bold text-slate-400">แนวโน้มขยะเดือนนี้:</span>
+                                <span className={`font-mono px-3 py-1.5 rounded-lg font-black shadow-sm flex items-center gap-1 ${wasteDiffPercent >= 0
+                                    ? 'bg-rose-50 text-rose-600 border border-rose-100' // ขยะเพิ่มขึ้น (ใช้สีแดงเตือน)
+                                    : 'bg-emerald-50 text-emerald-600 border border-emerald-100' // ขยะลดลง (ใช้สีเขียวชมเชย)
+                                    }`}>
+                                    {currentMonthWaste.toLocaleString(undefined, { maximumFractionDigits: 1 })} กก.
+                                    ({wasteDiffPercent >= 0 ? `↑` : `↓`} {Math.abs(wasteDiffPercent).toFixed(1)}%)
+                                </span>
+                            </div>
+
+                            {/* สถานะข้อมูลออนไลน์ */}
+                            <div className="flex items-center gap-2">
+                                <span className="font-bold text-slate-400">สถานะข้อมูล:</span>
+                                <span className="font-mono bg-emerald-50 border border-emerald-100 px-3 py-1.5 rounded-lg text-emerald-700 font-bold shadow-sm flex items-center gap-1.5">
+                                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                                    อัปเดตล่าสุด: {new Date().toLocaleDateString('th-TH')}
+                                </span>
+                            </div>
                         </div>
-                        <p className="font-medium">© 2026 กองสาธารณสุขและสิ่งแวดล้อมเทศบาลตำบลอุโมงค์</p>
+                        <p className="font-medium text-slate-400">© {new Date().getFullYear() + 543} กองสาธารณสุขและสิ่งแวดล้อมเทศบาลตำบลอุโมงค์</p>
                     </div>
                 </footer>
 
