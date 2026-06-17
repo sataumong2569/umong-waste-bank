@@ -65,7 +65,7 @@ const MobileNavItem = ({ active, onClick, label, icon }) => (
 const DashboardView = ({ stats, villageData, wasteTypeData, members, setCurrentPage, selectedPeriod, setSelectedPeriod, historicalSummary }) => {
     const isHistorical = selectedPeriod?.month !== 'current';
     const histData = historicalSummary || {};
-    // 1. สัดส่วนการคัดแยกขยะ (อัปเดตให้นับจาก "รายบุคคล")
+    // 1. สัดส่วนการคัดแยกขยะ
     const separationStats = useMemo(() => {
         if (isHistorical) {
             return [
@@ -73,7 +73,6 @@ const DashboardView = ({ stats, villageData, wasteTypeData, members, setCurrentP
                 { name: 'ยังไม่คัดแยกประเภทขยะ', value: histData.unsortedPersons || 0, color: '#ef4444' }
             ];
         }
-        // ระบบป้องกัน: ถ้ายังไม่มีข้อมูลสมาชิก ให้ค่าเป็น 0 ทั้งหมดก่อน
         if (!members) return [
             { name: 'คัดแยกประเภทขยะแล้ว', value: 0, color: '#16a34a' },
             { name: 'ยังไม่คัดแยกประเภทขยะ', value: 0, color: '#ef4444' }
@@ -82,21 +81,14 @@ const DashboardView = ({ stats, villageData, wasteTypeData, members, setCurrentP
         let sortedCount = 0;
         let notSortedCount = 0;
 
-        // วนลูปเข้าไปในแต่ละบ้าน
         members.forEach(m => {
-            // กรองเอาเฉพาะคนที่มีชื่อจริงๆ (ไม่เอาช่องว่าง)
             const validPersons = (m.familyMembers || []).filter(p => {
                 const name = typeof p === 'string' ? p : p?.name;
                 return name && name.trim() !== '';
             });
-
-            // ตรวจสอบสถานะการคัดแยกของแต่ละคน
             validPersons.forEach(p => {
-                if (typeof p === 'object' && p.isSorted) {
-                    sortedCount += 1;
-                } else {
-                    notSortedCount += 1;
-                }
+                if (typeof p === 'object' && p.isSorted) sortedCount += 1;
+                else notSortedCount += 1;
             });
         });
 
@@ -104,25 +96,26 @@ const DashboardView = ({ stats, villageData, wasteTypeData, members, setCurrentP
             { name: 'คัดแยกประเภทขยะแล้ว', value: sortedCount, color: '#16a34a' },
             { name: 'ยังไม่คัดแยกประเภทขยะ', value: notSortedCount, color: '#ef4444' }
         ];
-    }, [members]);
+    }, [members, isHistorical, histData]);
+
     // 2. สัดส่วนการเข้าร่วมโครงการ (วงกลม 2)
     const participationStats = useMemo(() => {
         if (isHistorical) {
             const participatedCount = histData.totalHouses || 0;
             return [
                 { name: 'เข้าร่วมโครงการแล้ว', value: participatedCount, color: '#29c21bff' },
-                { name: 'ยังไม่ได้เข้าร่วม', value: 600 - participatedCount, color: '#8e978fff' }
+                { name: 'ยังไม่ได้เข้าร่วม', value: Math.max(0, 600 - participatedCount), color: '#8e978fff' }
             ];
         }
         const participatedCount = members ? members.length : 0;
-        const notParticipatedCount = 600; // ตั้งค่าเป้าหมายไว้ที่ 600 ก่อน
+        const notParticipatedCount = 600;
         return [
             { name: 'เข้าร่วมโครงการแล้ว', value: participatedCount, color: '#29c21bff' },
             { name: 'ยังไม่ได้เข้าร่วม', value: notParticipatedCount, color: '#8e978fff' }
         ];
-    }, [members]);
+    }, [members, isHistorical, histData]);
 
-    // 3. แนวโน้มการเติบโตของสมาชิก (ใช้ข้อมูลวันที่จริงจาก ID และนับ "รายบุคคล")
+    // 3. แนวโน้มการเติบโตของสมาชิก
     const trendData = useMemo(() => {
         if (isHistorical) {
             return [
@@ -130,7 +123,6 @@ const DashboardView = ({ stats, villageData, wasteTypeData, members, setCurrentP
                 { name: 'เดือนนี้', amount: histData.totalPersons || 0, color: '#19ac19ff' }
             ];
         }
-        // ถ้ายังไม่มีข้อมูลเลย ให้แสดง 0
         if (!members || members.length === 0) return [
             { name: 'เดือนก่อน', amount: 0, color: '#106e18ff' },
             { name: 'เดือนนี้', amount: 0, color: '#19ac19ff' }
@@ -139,28 +131,19 @@ const DashboardView = ({ stats, villageData, wasteTypeData, members, setCurrentP
         const now = new Date();
         const currentMonth = now.getMonth();
         const currentYear = now.getFullYear();
-
-        let beforeThisMonthCount = 0; // ยอดคนสะสมจนถึงเดือนที่แล้ว
-        let currentTotalCount = 0;    // ยอดคนรวมทั้งหมดในระบบปัจจุบัน (เดือนนี้)
+        let beforeThisMonthCount = 0;
+        let currentTotalCount = 0;
 
         members.forEach(m => {
-            // 1. นับจำนวน "บุคคล" ที่มีชื่อจริงๆ ในบ้านหลังนี้
             const validPersonsCount = (m.familyMembers || []).filter(p => {
                 const name = typeof p === 'string' ? p : p?.name;
                 return name && name.trim() !== '';
             }).length;
 
-            // 2. ดึงวันที่สร้างบ้านจาก ID (Timestamp)
             const joinDate = new Date(Number(m.id));
-
-            // เช็กว่าบ้านนี้สร้างก่อนเดือนปัจจุบันใช่หรือไม่
             const isOldHouse = (!isNaN(joinDate.getTime()) && (joinDate.getMonth() !== currentMonth || joinDate.getFullYear() !== currentYear));
 
-            // 3. บวกยอดรวมทั้งหมดในปัจจุบันเสมอ (ยอดเดือนนี้)
             currentTotalCount += validPersonsCount;
-
-            // 4. ถ้าระบบระบุว่าเป็นบ้านที่สร้างก่อนเดือนนี้ ให้เอายอดคนไปโชว์เป็นฐานของ "เดือนก่อน" ด้วย
-            // (ถ้า ID เป็นรูปแบบเก่าที่แปลงเป็นวันที่ไม่ได้ ให้เหมาว่าเป็นคนเก่าไว้ก่อน)
             if (isNaN(joinDate.getTime()) || isOldHouse) {
                 beforeThisMonthCount += validPersonsCount;
             }
@@ -168,60 +151,70 @@ const DashboardView = ({ stats, villageData, wasteTypeData, members, setCurrentP
 
         return [
             { name: 'เดือนก่อน', amount: beforeThisMonthCount, color: '#106e18ff' },
-            { name: 'เดือนนี้', amount: currentTotalCount, color: '#19ac19ff' } // ยอดปัจจุบันแบบ Real-time
+            { name: 'เดือนนี้', amount: currentTotalCount, color: '#19ac19ff' }
         ];
-    }, [members]);
+    }, [members, isHistorical, histData]); // 🌟 เพิ่ม isHistorical, histData ตรงนี้
 
+    // 🌟 4. ตัวสลับรางข้อมูล "ปริมาณขยะแยกตามประเภท"
+    const currentWasteTypeData = useMemo(() => {
+        // ถ้าเป็นการดูย้อนหลัง ให้แกะข้อมูลขยะจากบิลสรุป (histData)
+        if (isHistorical) {
+            const types = ['พลาสติก', 'กระดาษ', 'แก้ว', 'อลูมิเนียม', 'โลหะผสม', 'เหล็ก'];
+            return types.map(type => ({
+                name: type,
+                amount: Number(histData.wasteData?.[type]) || 0
+            }));
+        }
+        // ถ้าดูเดือนปัจจุบัน ให้ใช้ข้อมูลสดที่ส่งมาจาก App.jsx
+        return wasteTypeData;
+    }, [isHistorical, histData, wasteTypeData]);
     return (
         <div className="space-y-6">
-            {/* ── 🌟 แถบเลือกเดือน/ปี สำหรับดูสถิตีย้อนหลัง (Dropdown) ── */}
-            <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-100 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            {/* ── 🌟 แถบเลือกเดือน/ปี (Modern UI) ── */}
+            <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col lg:flex-row justify-between items-start lg:items-center gap-5">
                 <div>
-                    <h3 className="font-black text-lg text-slate-800 flex items-center gap-2">
-                        📅 ช่วงเวลาที่แสดงผลสถิติ
+                    <h3 className="font-black text-xl text-slate-800 flex items-center gap-2 tracking-tight">
+                        📅 เลือกช่วงเวลาสถิติ
                     </h3>
-                    <p className="text-xs text-slate-400 mt-0.5 font-bold">
-                        {selectedPeriod.month === 'current' ? 'กำลังแสดงข้อมูลภาพรวม Real-time ณ ปัจจุบัน' : `กำลังแสดงข้อมูลย้อนหลังของเดือน ${selectedPeriod.month} ปี ${selectedPeriod.year}`}
+                    <p className="text-sm text-slate-500 mt-1 font-medium">
+                        {selectedPeriod.month === 'current'
+                            ? <span className="text-emerald-600 font-bold bg-emerald-50 px-2 py-1 rounded-md">กำลังแสดงผลเดือนปัจจุบัน</span>
+                            : `แสดงข้อมูลบิลสรุปย้อนหลัง: ${selectedPeriod.month} ${selectedPeriod.year}`}
                     </p>
                 </div>
 
-                <div className="flex gap-2 w-full sm:w-auto">
-                    {/* ตัวเลือกเดือน */}
+                <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto bg-slate-50 p-2 rounded-2xl border border-slate-100">
                     <select
                         value={selectedPeriod.month}
                         onChange={(e) => {
                             const m = e.target.value;
                             setSelectedPeriod(prev => ({ ...prev, month: m, ...(m === 'current' && { year: 'current' }) }));
                         }}
-                        className="flex-1 sm:flex-none bg-slate-50 border border-slate-200 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-700 outline-none cursor-pointer focus:border-emerald-500"
+                        className="flex-1 sm:w-48 bg-white border border-slate-200 px-4 py-3 rounded-xl text-sm font-black text-slate-700 outline-none cursor-pointer focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm"
                     >
-                        <option value="current">เดือนปัจจุบัน (Real-time)</option>
-                        <option value="มกราคม">มกราคม</option>
-                        <option value="กุมภาพันธ์">กุมภาพันธ์</option>
-                        <option value="มีนาคม">มีนาคม</option>
-                        <option value="เมษายน">เมษายน</option>
-                        <option value="พฤษภาคม">พฤษภาคม</option>
-                        <option value="มิถุนายน">มิถุนายน</option>
-                        <option value="กรกฎาคม">กรกฎาคม</option>
-                        <option value="สิงหาคม">สิงหาคม</option>
-                        <option value="กันยายน">กันยายน</option>
-                        <option value="ตุลาคม">ตุลาคม</option>
-                        <option value="พฤศจิกายน">พฤศจิกายน</option>
-                        <option value="ธันวาคม">ธันวาคม</option>
+                        <option value="current">เดือนปัจจุบัน</option>
+                        <option disabled>──────────</option>
+                        {['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'].map(m => (
+                            <option key={m} value={m}>{m}</option>
+                        ))}
                     </select>
 
-                    {/* ตัวเลือกปี (จะยอมให้เลือกถ้าไม่ได้เลือกเป็นเดือนปัจจุบัน) */}
-                    {selectedPeriod.month !== 'current' && (
-                        <select
-                            value={selectedPeriod.year}
-                            onChange={(e) => setSelectedPeriod(prev => ({ ...prev, year: e.target.value }))}
-                            className="flex-1 sm:flex-none bg-slate-50 border border-slate-200 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-700 outline-none cursor-pointer focus:border-emerald-500 animate-in fade-in zoom-in-95 duration-200"
-                        >
-                            {Array.from({ length: 8 }, (_, i) => new Date().getFullYear() + 543 - 2 + i).map(year => (
-                                <option key={year} value={year}>{year}</option>
-                            ))}
-                        </select>
-                    )}
+                    <select
+                        value={selectedPeriod.year}
+                        onChange={(e) => setSelectedPeriod(prev => ({ ...prev, year: e.target.value }))}
+                        disabled={selectedPeriod.month === 'current'}
+                        className={`flex-1 sm:w-32 bg-white border border-slate-200 px-4 py-3 rounded-xl text-sm font-black outline-none cursor-pointer transition-all shadow-sm ${selectedPeriod.month === 'current' ? 'opacity-50 text-slate-400 bg-slate-100 cursor-not-allowed' : 'text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500'}`}
+                    >
+                        {selectedPeriod.month === 'current' ? (
+                            <option value="current">ปีปัจจุบัน</option>
+                        ) : (
+                            Array.from({ length: new Date().getFullYear() + 543 - 2567 + 1 }, (_, i) => 2567 + i)
+                                .reverse()
+                                .map(year => (
+                                    <option key={year} value={year}>{year}</option>
+                                ))
+                        )}
+                    </select>
                 </div>
             </div>
             {/* ส่วนที่ 1: การแสดงผลสถิติ 5 กล่องด้านบน (สรุปตัวเลขสำคัญ) */}
@@ -338,13 +331,23 @@ const DashboardView = ({ stats, villageData, wasteTypeData, members, setCurrentP
                             </h3>
                         </div>
 
-                        {/* List Box แบบพรีเมียม (ดีไซน์ใหม่ กระชับพื้นที่ ไม่เบียด ไม่แหว่ง) */}
+                        {/* List Box  */}
                         <div className="flex flex-col gap-3 overflow-y-auto max-h-[460px] pr-2 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent pb-4">
                             {[...villageData]
                                 .map(v => {
-                                    const vMembers = members ? members.filter(m => Number(m.villageId) === Number(v.id)) : [];
-                                    const realBalance = vMembers.reduce((sum, m) => sum + (Number(m.balance) || 0), 0);
-                                    return { ...v, realBalance };
+                                    // 🌟 กลไกสับราง: ถ้าดูย้อนหลัง ให้ดึงยอดที่บันทึกไว้ในบิลสรุปมาโชว์เลย ไม่ต้องคำนวณใหม่!
+                                    let calculatedBalance = 0;
+
+                                    if (isHistorical) {
+                                        // สำหรับข้อมูลย้อนหลัง เราบันทึก realBalance ไว้แล้วใน histData.villageData ตอน Import
+                                        calculatedBalance = Number(v.realBalance) || 0;
+                                    } else {
+                                        // สำหรับเดือนปัจจุบัน ก็ไปบวกเลขสดๆ จาก members ตามปกติ
+                                        const vMembers = members ? members.filter(m => Number(m.villageId) === Number(v.id)) : [];
+                                        calculatedBalance = vMembers.reduce((sum, m) => sum + (Number(m.balance) || 0), 0);
+                                    }
+
+                                    return { ...v, realBalance: calculatedBalance };
                                 })
                                 .sort((a, b) => b.realBalance - a.realBalance)
                                 .map((v, i) => (
@@ -513,9 +516,9 @@ const DashboardView = ({ stats, villageData, wasteTypeData, members, setCurrentP
             <div className="modern-card">
                 <h3 className="font-bold text-lg mb-4 text-slate-800">ปริมาณขยะแยกตามประเภท (กิโลกรัม)</h3>
                 <div className="h-[300px] min-h-[300px] w-full bg-slate-50/50 rounded-2xl flex items-center justify-center">
-                    {wasteTypeData && wasteTypeData.length > 0 ? (
+                    {currentWasteTypeData && currentWasteTypeData.length > 0 ? (
                         <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={wasteTypeData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                            <BarChart data={currentWasteTypeData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                                 <defs>
                                     <linearGradient id="grad-plastic" x1="0" y1="1" x2="0" y2="0">
                                         <stop offset="0%" stopColor="#22c55e" stopOpacity={0.9} />
@@ -3943,6 +3946,24 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
     const [importMonth, setImportMonth] = useState(ThaiMonths[now.getMonth()]);
     const [importYear, setImportYear] = useState(String(now.getFullYear() + 543));
     const [monthlySummaryPayload, setMonthlySummaryPayload] = useState(null);
+    const [importMode, setImportMode] = useState('increment'); // 'increment' (บวกทบ) หรือ 'overwrite' (ทับข้อมูลเดิม)
+    const [isDuplicateMonth, setIsDuplicateMonth] = useState(false); // เช็กว่าเดือนนี้เคยนำเข้าหรือยัง
+    const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+    const [processPendingFile, setProcessPendingFile] = useState(null);
+
+    // Effect คอยวิ่งไปถาม DB อัตโนมัติว่า เดือน/ปี ที่เลือกนี้ เคยถูก Import บิลสรุปไปหรือยัง?
+    React.useEffect(() => {
+        const checkDuplicate = async () => {
+            try {
+                const docId = `${importYear}_${importMonth}`;
+                const snap = await getDoc(doc(db, "monthly_summaries", docId));
+                setIsDuplicateMonth(snap.exists());
+            } catch (e) {
+                console.error("เช็กเดือนซ้ำล้มเหลว:", e);
+            }
+        };
+        checkDuplicate();
+    }, [importMonth, importYear, db]);
 
     const itemsPerPage = 10;
 
@@ -3986,42 +4007,53 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
     const handleFileChange = (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        setImportedFileName(file.name);
-        const reader = new FileReader();
-        reader.onload = function (event) {
-            const text = event.target.result;
-            const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
-            if (lines.length <= 1) return alert("❌ ไฟล์ว่างเปล่า หรือไม่มีข้อมูล");
 
-            // หาว่าบรรทัดไหนคือหัวข้อคอลัมน์ (ดักจับคำว่า 'บ้านเลขที่')
-            let headerIndex = 0;
-            for (let i = 0; i < lines.length; i++) {
-                if (lines[i].includes('บ้านเลขที่')) {
-                    headerIndex = i; break;
+        // ฟังก์ชันอ่านไฟล์จริง (เก็บไว้เรียกใช้ทีหลังได้)
+        const executeFileReader = () => {
+            setImportedFileName(file.name);
+            const reader = new FileReader();
+            reader.onload = function (event) {
+                const text = event.target.result;
+                const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
+                if (lines.length <= 1) return alert("❌ ไฟล์ว่างเปล่า หรือไม่มีข้อมูล");
+
+                let headerIndex = 0;
+                for (let i = 0; i < lines.length; i++) {
+                    if (lines[i].includes('บ้านเลขที่')) {
+                        headerIndex = i; break;
+                    }
                 }
-            }
 
-            // ตรวจหาตัวคั่น (Comma หรือ Semicolon)
-            const delimiter = lines[headerIndex].includes(';') ? ';' : ',';
-            const headers = lines[headerIndex].split(delimiter).map(h => h.trim().replace(/^"|"$/g, ''));
-            const rowsData = [];
+                const delimiter = lines[headerIndex].includes(';') ? ';' : ',';
+                const headers = lines[headerIndex].split(delimiter).map(h => h.trim().replace(/^"|"$/g, ''));
+                const rowsData = [];
 
-            // เริ่มอ่านข้อมูลบรรทัดถัดจากหัวข้อ
-            for (let i = headerIndex + 1; i < lines.length; i++) {
-                const values = lines[i].split(delimiter).map(v => v.trim().replace(/^"|"$/g, ''));
-                if (values.length < 3) continue;
+                for (let i = headerIndex + 1; i < lines.length; i++) {
+                    const values = lines[i].split(delimiter).map(v => v.trim().replace(/^"|"$/g, ''));
+                    if (values.length < 3) continue;
 
-                const rowObj = {};
-                headers.forEach((header, index) => {
-                    rowObj[header] = values[index] || '';
-                });
-                rowsData.push(rowObj);
-            }
+                    const rowObj = {};
+                    headers.forEach((header, index) => {
+                        rowObj[header] = values[index] || '';
+                    });
+                    rowsData.push(rowObj);
+                }
 
-            if (rowsData.length === 0) return alert("❌ ไม่พบข้อมูลสมาชิกในไฟล์");
-            processImportData(rowsData);
+                if (rowsData.length === 0) return alert("❌ ไม่พบข้อมูลสมาชิกในไฟล์");
+                processImportData(rowsData);
+            };
+            reader.readAsText(file, 'UTF-8');
         };
-        reader.readAsText(file, 'UTF-8');
+
+        // 🌟 ถ้าเดือนซ้ำ ให้เด้งป๊อปอัปถามก่อน!
+        if (isDuplicateMonth) {
+            setProcessPendingFile(() => executeFileReader);
+            setShowDuplicateModal(true);
+            e.target.value = null; // ล้างค่า input ให้กดเลือกไฟล์เดิมได้
+        } else {
+            executeFileReader(); // ถ้าไม่ซ้ำ ลุยอ่านไฟล์เลย
+            e.target.value = null;
+        }
     };
 
     // 🌟 2. ฟังก์ชันประมวลผล (อัปเกรด: ค้นหาคนเดิมแล้วบวกยอดเพิ่ม)
@@ -4074,23 +4106,34 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
 
             const targetHouse = houseMap[houseNo];
             let existingPerson = targetHouse.familyMembers.find(p => p.name === name);
-
             if (existingPerson) {
-                // 🟢 กรณีมีคนชื่อนี้อยู่แล้ว -> บวกยอดเงินและขยะเพิ่มเข้าไป (Increment)
-                existingPerson.balance = (Number(existingPerson.balance) || 0) + balanceToAdd;
-                existingPerson.credit = (Number(existingPerson.credit) || 0) + Number(carbonToAdd.toFixed(4));
-                existingPerson.hasWelfare = existingPerson.hasWelfare || hasWelfare;
-                existingPerson.isSorted = existingPerson.isSorted || isSorted;
+                // 🌟 เก็บยอดเดิมไว้โชว์หน้า UI ก่อนถูกคำนวณทับ
+                existingPerson.oldBalance = Number(existingPerson.balance) || 0;
 
-                if (!existingPerson.wasteData) existingPerson.wasteData = {};
-                Object.keys(wasteToAdd).forEach(wType => {
-                    existingPerson.wasteData[wType] = (existingPerson.wasteData[wType] || 0) + wasteToAdd[wType];
-                });
+                // 🌟 กลไกที่ 2: สวิตช์แยกว่าจะ "บวกทบ" หรือ "ล้างไพ่ทับของเดิม"
+                if (importMode === 'increment') {
+                    existingPerson.balance = existingPerson.oldBalance + balanceToAdd;
+                    existingPerson.credit = (Number(existingPerson.credit) || 0) + Number(carbonToAdd.toFixed(4));
+                    existingPerson.hasWelfare = existingPerson.hasWelfare || hasWelfare;
+                    existingPerson.isSorted = existingPerson.isSorted || isSorted;
+
+                    if (!existingPerson.wasteData) existingPerson.wasteData = {};
+                    Object.keys(wasteToAdd).forEach(wType => {
+                        existingPerson.wasteData[wType] = (Number(existingPerson.wasteData[wType]) || 0) + wasteToAdd[wType];
+                    });
+                } else {
+                    existingPerson.balance = balanceToAdd;
+                    existingPerson.credit = Number(carbonToAdd.toFixed(4));
+                    existingPerson.hasWelfare = hasWelfare;
+                    existingPerson.isSorted = isSorted;
+                    existingPerson.wasteData = { ...wasteToAdd };
+                }
             } else {
                 // 🔵 กรณีไม่มีคนชื่อนี้ -> เพิ่มเป็นสมาชิกคนใหม่เข้าบ้านไปเลย
                 targetHouse.familyMembers.push({
                     id: String(Date.now() + index + '_p'),
                     name: name,
+                    oldBalance: 0, // 🌟 คนใหม่ยอดเดิมคือ 0 เสมอ
                     balance: balanceToAdd,
                     credit: Number(carbonToAdd.toFixed(4)),
                     wasteData: wasteToAdd,
@@ -4300,7 +4343,32 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
                             <p className="text-base text-slate-500 max-w-md mb-8 leading-relaxed font-medium">
                                 อัปโหลดไฟล์รายชื่อสกุล <span className="font-bold text-blue-600 bg-blue-100/50 px-2 py-1 rounded-md">.csv</span> ระบบจะทำการจัดกลุ่มลูกบ้านและคำนวณคาร์บอนให้อัตโนมัติ
                             </p>
+                            {/* 🌟 แสดงคำเตือนถ้าเดือนนี้เคยนำเข้าข้อมูลไปแล้ว (สกัดดาวรุ่ง) */}
+                            {isDuplicateMonth && (
+                                <div className="bg-rose-50 border border-rose-200 text-rose-600 p-4 rounded-2xl mb-6 w-full max-w-lg mx-auto flex items-start gap-3 text-left animate-in zoom-in duration-300 shadow-sm">
+                                    <AlertTriangle size={24} className="shrink-0 mt-0.5" />
+                                    <div>
+                                        <p className="font-black text-sm">⚠️ ระบบเคยสรุปบิลของเดือน {importMonth} {importYear} ไปแล้ว!</p>
+                                        <p className="text-xs font-bold mt-1 opacity-80">หากนำเข้าแบบ "บวกทบ" ยอดเงินเดือนนี้จะเบิ้ล 2 เท่า กรุณาตรวจสอบให้แน่ใจ</p>
+                                    </div>
+                                </div>
+                            )}
 
+                            {/* 🌟 สวิตช์สลับโหมดนำเข้า */}
+                            <div className="flex bg-slate-100 p-1.5 rounded-2xl w-full max-w-lg mx-auto mb-6 relative z-10">
+                                <button
+                                    onClick={() => setImportMode('increment')}
+                                    className={`flex-1 py-3 px-4 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 ${importMode === 'increment' ? 'bg-white text-blue-600 shadow-sm border border-slate-200' : 'text-slate-500 hover:bg-slate-200'}`}
+                                >
+                                    <PlusCircle size={16} /> โหมดบวก (ยอดรวมเพิ่มขึ้น)
+                                </button>
+                                <button
+                                    onClick={() => setImportMode('overwrite')}
+                                    className={`flex-1 py-3 px-4 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 ${importMode === 'overwrite' ? 'bg-rose-500 text-white shadow-sm border border-rose-600' : 'text-slate-500 hover:bg-slate-200'}`}
+                                >
+                                    <Database size={16} /> โหมดแทนที่ (ข้อมูลใหม่แทนที่ข้อมูลเดิมทั้งหมด)
+                                </button>
+                            </div>
                             {/* 🌟 4. เพิ่ม Dropdown ระบุเดือนและปีของไฟล์ที่จะนำเข้า */}
                             <div className="flex gap-3 mb-8 w-full max-w-sm mx-auto justify-center z-10 relative">
                                 <select
@@ -4326,14 +4394,12 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
                                     onChange={e => setImportYear(e.target.value)}
                                     className="w-32 bg-white border-2 border-slate-200 px-4 py-3 rounded-xl font-bold text-slate-700 outline-none focus:border-blue-500 shadow-sm cursor-pointer text-center"
                                 >
-                                    {Array.from({ length: 8 }).map((_, index) => {
-                                        const calculatedYear = new Date().getFullYear() + 543 - 2 + index;
-                                        return (
-                                            <option key={calculatedYear} value={calculatedYear}>
-                                                {calculatedYear}const [visitorStats
-                                            </option>
-                                        );
-                                    })}
+                                    {Array.from({ length: new Date().getFullYear() + 543 - 2567 + 1 }, (_, i) => 2567 + i)
+                                        .reverse()
+                                        .map(year => (
+                                            <option key={year} value={year}>{year}</option>
+                                        ))
+                                    }
                                 </select>
                             </div>
 
@@ -4344,61 +4410,91 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
                         </div>
                     )}
 
-                    {/* STEP 2: รีเช็กข้อมูลก่อนยืนยัน */}
+                    {/* STEP 2: รีเช็กข้อมูลก่อนยืนยัน (โฉมใหม่ มี Before-After) */}
                     {step === 2 && (
-                        <div className="flex-1 flex flex-col h-full">
+                        <div className="flex-1 flex flex-col h-full animate-in fade-in duration-300">
 
                             {/* แผงควบคุมและสรุปตัวเลขบนตาราง */}
                             <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mb-6 pb-6 border-b border-slate-100">
                                 <div>
-                                    <h3 className="text-xl font-black text-slate-800 flex items-center gap-2 mb-4">
-                                        <Eye size={20} className="text-blue-500" /> รีวิวความถูกต้องของข้อมูล
+                                    <h3 className="text-2xl font-black text-slate-800 flex items-center gap-2 mb-3">
+                                        <Eye size={24} className="text-blue-500" /> ตรวจสอบข้อมูลก่อนนำเข้า
                                     </h3>
+
+                                    <div className="mb-4">
+                                        <span className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-black border shadow-sm ${importMode === 'increment' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
+                                            {importMode === 'increment' ? <PlusCircle size={16} /> : <Database size={16} />}
+                                            {importMode === 'increment' ? 'โหมดนำเข้า: บวกทบยอดเพิ่มจากของเดิม' : 'โหมดนำเข้า: เขียนทับข้อมูลเดิมทั้งหมด (ล้างไพ่)'}
+                                        </span>
+                                    </div>
+
                                     <div className="flex flex-wrap gap-3">
-                                        <div className="bg-blue-50 border border-blue-100 px-4 py-2 rounded-xl flex items-center gap-2">
-                                            <Home size={16} className="text-blue-500" />
-                                            <span className="text-xs font-bold text-slate-500 uppercase">ครัวเรือน</span>
-                                            <span className="text-lg font-black text-blue-700 ml-1">{summary.houses}</span>
+                                        <div className="bg-slate-50 border border-slate-200 px-4 py-2 rounded-xl flex items-center gap-2 shadow-sm">
+                                            <Home size={16} className="text-slate-500" />
+                                            <span className="text-xs font-bold text-slate-500">อัปเดตบ้าน</span>
+                                            <span className="text-lg font-black text-slate-700 ml-1">{summary.houses}</span>
                                         </div>
-                                        <div className="bg-emerald-50 border border-emerald-100 px-4 py-2 rounded-xl flex items-center gap-2">
-                                            <Users size={16} className="text-emerald-500" />
-                                            <span className="text-xs font-bold text-slate-500 uppercase">ประชากร</span>
-                                            <span className="text-lg font-black text-emerald-700 ml-1">{summary.persons}</span>
+                                        <div className="bg-slate-50 border border-slate-200 px-4 py-2 rounded-xl flex items-center gap-2 shadow-sm">
+                                            <Users size={16} className="text-slate-500" />
+                                            <span className="text-xs font-bold text-slate-500">อัปเดตประชากร</span>
+                                            <span className="text-lg font-black text-slate-700 ml-1">{summary.persons}</span>
                                         </div>
-                                        <div className="bg-amber-50 border border-amber-100 px-4 py-2 rounded-xl flex items-center gap-2">
+                                        <div className="bg-amber-50 border border-amber-200 px-4 py-2 rounded-xl flex items-center gap-2 shadow-sm">
                                             <Wallet size={16} className="text-amber-500" />
-                                            <span className="text-xs font-bold text-slate-500 uppercase">ยอดเงินตั้งต้นรวม</span>
+                                            <span className="text-xs font-bold text-amber-700">ยอดเงินในไฟล์รอบนี้</span>
                                             <span className="text-lg font-black text-amber-600 font-mono ml-1">฿{summary.money.toLocaleString()}</span>
                                         </div>
                                     </div>
                                 </div>
-                                <button onClick={() => { setStep(1); setPreviewHouses([]); }} className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl transition text-xs border border-slate-200 shadow-sm shrink-0">
-                                    🗑️ ยกเลิก / เปลี่ยนไฟล์ใหม่
+                                <button onClick={() => { setStep(1); setPreviewHouses([]); }} className="px-5 py-3 bg-white hover:bg-slate-50 text-slate-600 font-bold rounded-xl transition-all text-sm border border-slate-200 shadow-sm shrink-0 flex items-center gap-2">
+                                    <X size={16} /> ยกเลิกนำเข้า
                                 </button>
                             </div>
 
-                            {/* ตารางรายการ */}
+                            {/* ตารางรายการ (โชว์ ยอดเดิม ➔ ยอดใหม่) */}
                             <div className="flex-1 overflow-y-auto pr-2 space-y-4 mb-6 scrollbar-thin">
                                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
                                     {currentViewHouses.map((house) => (
-                                        <div key={house.houseNo} className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm flex flex-col hover:border-blue-300 transition-colors group">
-                                            <div className="bg-slate-50/80 px-5 py-3 border-b border-slate-100 flex justify-between items-center group-hover:bg-blue-50/30 transition-colors">
+                                        <div key={house.houseNo} className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm flex flex-col transition-colors group">
+                                            <div className="bg-slate-100/80 px-5 py-3 border-b border-slate-200 flex justify-between items-center">
                                                 <div>
-                                                    <span className="font-black text-slate-800 text-sm flex items-center gap-2"><Home size={14} className="text-slate-400 group-hover:text-blue-500" /> บ้านเลขที่ {house.houseNo}</span>
-                                                    <span className="text-[10px] font-bold text-slate-400 mt-1 block">{house.category}</span>
+                                                    <span className="font-black text-slate-800 text-base flex items-center gap-2">
+                                                        <Home size={16} className="text-slate-400" /> บ้านเลขที่ {house.houseNo}
+                                                    </span>
+                                                    <span className="text-[11px] font-bold text-slate-500 mt-1 block">{house.category}</span>
                                                 </div>
-                                                <span className="font-black text-amber-600 text-sm font-mono bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-100/50">ยอดรวม: ฿{house.balance.toLocaleString()}</span>
+                                                <span className="font-black text-slate-700 text-sm font-mono bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm">
+                                                    สรุปยอดบ้าน: ฿{house.balance.toLocaleString()}
+                                                </span>
                                             </div>
-                                            <div className="p-2 divide-y divide-slate-50">
+
+                                            <div className="p-2 divide-y divide-slate-100">
                                                 {house.familyMembers.map((p, pIdx) => (
-                                                    <div key={pIdx} className="px-4 py-2.5 flex justify-between items-center text-sm hover:bg-slate-50 rounded-xl transition-colors">
+                                                    <div key={pIdx} className="px-4 py-3 flex justify-between items-center hover:bg-slate-50 rounded-xl transition-colors">
                                                         <div className="flex items-center gap-3">
-                                                            <span className="bg-slate-100 text-slate-400 text-[10px] font-bold w-6 h-6 rounded-full flex items-center justify-center shrink-0">{pIdx + 1}</span>
-                                                            <span className="font-bold text-slate-700">{p.name}</span>
+                                                            <span className="bg-emerald-50 text-emerald-600 text-[10px] font-black w-6 h-6 rounded-full flex items-center justify-center shrink-0 border border-emerald-100">{pIdx + 1}</span>
+                                                            <div className="flex flex-col">
+                                                                <span className="font-bold text-slate-800 text-sm">{p.name}</span>
+                                                                {p.isSorted && <span className="text-[9px] font-bold text-emerald-500 mt-0.5">✅ แยกขยะ</span>}
+                                                            </div>
                                                         </div>
-                                                        <div className="flex gap-4 items-center font-mono text-xs text-slate-500">
-                                                            <span className="px-2 py-0.5 rounded text-[10px] font-bold border border-slate-200 bg-white">{p.isSorted ? '✅ แยกขยะ' : '❌ ไม่แยก'}</span>
-                                                            <span className="font-black text-amber-600 w-16 text-right">฿{p.balance}</span>
+
+                                                        {/*  ตรงนี้คือส่วนโชว์ Before ➔ After */}
+                                                        <div className="flex flex-col items-end">
+                                                            <div className="flex items-center gap-2 font-mono">
+                                                                <span className="text-xs text-slate-400 line-through decoration-slate-300 opacity-80">
+                                                                    ฿{p.oldBalance?.toLocaleString() || 0}
+                                                                </span>
+                                                                <span className="text-slate-300 text-xs">➔</span>
+                                                                <span className={`font-black text-base ${importMode === 'increment' ? 'text-emerald-600' : 'text-blue-600'}`}>
+                                                                    ฿{p.balance.toLocaleString()}
+                                                                </span>
+                                                            </div>
+                                                            <span className="text-[10px] font-bold text-slate-400 mt-0.5">
+                                                                {importMode === 'increment'
+                                                                    ? `(+฿${(p.balance - (p.oldBalance || 0)).toLocaleString()})`
+                                                                    : '(ทับยอดเดิม)'}
+                                                            </span>
                                                         </div>
                                                     </div>
                                                 ))}
@@ -4409,17 +4505,17 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
                             </div>
 
                             {/* แถบควบคุมด้านล่างของพื้นที่ทำงาน */}
-                            <div className="mt-auto bg-slate-50 border border-slate-100 p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-4">
+                            <div className="mt-auto bg-slate-50 border border-slate-200 p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-4 shadow-[0_-4px_15px_rgba(0,0,0,0.02)]">
                                 <div className="flex items-center gap-3">
-                                    <span className="font-bold text-slate-400 text-xs hidden md:block">กำลังแสดงหน้า</span>
-                                    <div className="flex border border-slate-200 rounded-xl overflow-hidden shadow-sm bg-white">
-                                        <button onClick={() => setPreviewPage(p => Math.max(p - 1, 1))} disabled={previewPage === 1} className="px-4 py-2 hover:bg-slate-50 text-slate-600 font-bold disabled:opacity-30 border-r border-slate-200 text-xs transition-colors">◀</button>
-                                        <span className="px-4 py-2 bg-slate-50 font-black text-slate-600 text-xs border-r border-slate-200 min-w-[3rem] text-center">{previewPage} / {totalPages}</span>
-                                        <button onClick={() => setPreviewPage(p => Math.min(p + 1, totalPages))} disabled={previewPage === totalPages} className="px-4 py-2 hover:bg-slate-50 text-slate-600 font-bold disabled:opacity-30 text-xs transition-colors">▶</button>
+                                    <span className="font-bold text-slate-500 text-sm hidden md:block">แสดงผลลัพธ์</span>
+                                    <div className="flex border border-slate-300 rounded-xl overflow-hidden shadow-sm bg-white">
+                                        <button onClick={() => setPreviewPage(p => Math.max(p - 1, 1))} disabled={previewPage === 1} className="px-4 py-2 hover:bg-slate-100 text-slate-600 font-bold disabled:opacity-30 border-r border-slate-200 text-sm transition-colors">◀</button>
+                                        <span className="px-4 py-2 bg-slate-50 font-black text-slate-700 text-sm border-r border-slate-200 min-w-[4rem] text-center">หน้า {previewPage} / {totalPages}</span>
+                                        <button onClick={() => setPreviewPage(p => Math.min(p + 1, totalPages))} disabled={previewPage === totalPages} className="px-4 py-2 hover:bg-slate-100 text-slate-600 font-bold disabled:opacity-30 text-sm transition-colors">▶</button>
                                     </div>
                                 </div>
                                 <button onClick={handleConfirmImport} className="w-full sm:w-auto bg-blue-600 text-white px-8 py-3.5 rounded-xl font-black shadow-[0_4px_14px_rgba(37,99,235,0.3)] hover:bg-blue-700 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 text-sm">
-                                    <Database size={18} /> ยืนยันนำเข้าข้อมูล
+                                    <Save size={18} /> ยืนยันเขียนข้อมูลลงระบบ
                                 </button>
                             </div>
                         </div>
@@ -4438,6 +4534,40 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
                             <div className="w-full max-w-md bg-slate-100 h-4 rounded-full overflow-hidden mt-10 border border-slate-200 shadow-inner">
                                 <div className="bg-gradient-to-r from-blue-500 to-blue-600 h-full transition-all duration-300 relative" style={{ width: `${uploadProgress}%` }}>
                                     <div className="absolute inset-0 bg-white/20 w-full h-full animate-[shimmer_2s_infinite]"></div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    {/* 🚨 ป๊อปอัปสีแดงแจ้งเตือนนำเข้าซ้ำ */}
+                    {showDuplicateModal && (
+                        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[1000] flex flex-col items-center justify-center p-4 animate-in fade-in duration-200">
+                            <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+                                <div className="bg-rose-500 p-6 flex flex-col items-center text-center text-white">
+                                    <div className="bg-white/20 p-3 rounded-full mb-3 shadow-inner">
+                                        <AlertTriangle size={48} className="text-white" />
+                                    </div>
+                                    <h3 className="text-2xl font-black tracking-tight">แจ้งเตือนข้อมูลซ้ำซ้อน!</h3>
+                                </div>
+                                <div className="p-6 text-center">
+                                    <p className="text-slate-600 font-bold text-base mb-2">
+                                        ระบบตรวจสอบพบว่าเคยมีการสรุปบิลของเดือน <br />
+                                        <span className="text-rose-600 text-lg">"{importMonth} {importYear}"</span> ไปแล้ว
+                                    </p>
+                                    <div className="bg-rose-50 p-4 rounded-xl text-rose-700 text-sm font-medium border border-rose-100 text-left my-4">
+                                        <span className="block font-black mb-1">สิ่งที่จะเกิดขึ้นหากดำเนินการต่อ:</span>
+                                        <ul className="list-disc pl-5 space-y-1">
+                                            <li>หากอยู่ใน <b>"โหมดบวกทบ"</b> ยอดเงินเดือนนี้จะถูก <span className="font-black underline">เพิมเป็น 2 เท่า</span></li>
+                                            <li>หากอยู่ใน <b>"โหมดแทนที่"</b> ยอดเงินเก่าทั้งหมดจะถูก <span className="font-black underline">ลบและทับใหม่</span> ทันที</li>
+                                        </ul>
+                                    </div>
+                                    <div className="flex gap-3 w-full mt-6">
+                                        <button onClick={() => { setShowDuplicateModal(false); setProcessPendingFile(null); }} className="flex-1 py-3.5 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-colors">
+                                            ยกเลิก
+                                        </button>
+                                        <button onClick={() => { setShowDuplicateModal(false); if (processPendingFile) processPendingFile(); }} className="flex-[2] py-3.5 bg-rose-600 text-white font-black rounded-xl hover:bg-rose-700 shadow-[0_4px_12px_rgba(225,29,72,0.3)] transition-all">
+                                            ฉันเข้าใจแล้ว, ดำเนินการต่อ
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -4721,7 +4851,9 @@ const App = () => {
     const [isMenuOpen, setIsMenuOpen] = useState(false);        // สถานะการเปิด/ปิดเมนูมือถือ
     const [selectedPeriod, setSelectedPeriod] = useState({ month: 'current', year: 'current' });
     const [historicalSummary, setHistoricalSummary] = useState(null);
+    const [summaryCache, setSummaryCache] = useState({});
     const [prevMonthWaste, setPrevMonthWaste] = useState(null);
+
 
     useEffect(() => {
         const fetchPrevMonthWaste = async () => {
@@ -4849,7 +4981,7 @@ const App = () => {
             setMembers(prev => prev.filter(m => m.id !== memberId));
         }
     };
-    // 🌟 ขั้นตอนที่ 2: ฟังก์ชัน Lazy Loading ดึงข้อมูลสรุปรายเดือนย้อนหลังเมื่อมีการเปลี่ยน Dropdown
+    // 🌟 ขั้นตอนที่ 2: ฟังก์ชัน Lazy Loading ดึงข้อมูลสรุปรายเดือนย้อนหลัง (มีระบบ Memory Cache)
     useEffect(() => {
         const fetchHistoricalSummary = async () => {
             // ถ้าเลือกเป็น "เดือนปัจจุบัน" ให้ล้างค่าประวัติเก่าออก เพื่อกลับไปใช้ระบบคำนวณสดปกติ
@@ -4858,20 +4990,33 @@ const App = () => {
                 return;
             }
 
-            // เปิดป๊อปอัปโหลดสีเขียวกลางหน้าจอ เพื่อบอกให้ผู้ใช้รู้ว่าระบบกำลังดึงข้อมูล
+            // สร้างรหัสเอกสาร (Document ID) เช่น "2569_พฤษภาคม"
+            const docId = `${selectedPeriod.year}_${selectedPeriod.month}`;
+
+            // 🛑 กลไก Memory Cache: เช็กก่อนว่าในกระเป๋ามีข้อมูลของเดือนนี้หรือยัง?
+            if (summaryCache[docId]) {
+                console.log(`✅ ดึงข้อมูล ${docId} จาก Cache ในเครื่อง (เสีย 0 Read)`);
+                setHistoricalSummary(summaryCache[docId]);
+                return; // จบการทำงานตรงนี้เลย ไม่ต้องวิ่งไปหา Firebase
+            }
+
+            // เปิดป๊อปอัปโหลดสีเขียวกลางหน้าจอ
             setIsLoadingData(true);
 
             try {
-                // สร้างรหัสเอกสาร (Document ID) เช่น "2568_พฤษภาคม"
-                const docId = `${selectedPeriod.year}_${selectedPeriod.month}`;
+                console.log(`☁️ วิ่งไปดึงข้อมูล ${docId} จาก Firebase (เสีย 1 Read)`);
                 const summaryRef = doc(db, "monthly_summaries", docId);
                 const docSnap = await getDoc(summaryRef);
 
                 if (docSnap.exists()) {
+                    const data = docSnap.data();
                     // ถ้าเจอข้อมูลในคลาวด์ ให้เอามาเก็บไว้ใน State
-                    setHistoricalSummary(docSnap.data());
+                    setHistoricalSummary(data);
+
+                    // 📥 ดึงเสร็จแล้ว เอาไปเก็บใส่กระเป๋า Cache ไว้ใช้คราวหน้าด้วย!
+                    setSummaryCache(prev => ({ ...prev, [docId]: data }));
                 } else {
-                    // ถ้าไม่เจอข้อมูล (แสดงว่าเดือนนั้นยังไม่เคยมีการอัปโหลดข้อมูลย้อนหลัง)
+                    // ถ้าไม่เจอข้อมูล
                     setHistoricalSummary(null);
                     alert(`📂 ไม่พบข้อมูลสรุปสถิติของเดือน ${selectedPeriod.month} ${selectedPeriod.year} บนระบบ Cloud`);
                 }
@@ -4886,7 +5031,8 @@ const App = () => {
         };
 
         fetchHistoricalSummary();
-    }, [selectedPeriod, db]); // 🌟 ฟังก์ชันนี้จะทำงานอัตโนมัติเฉพาะเมื่อแอดมินเปลี่ยนเดือน/ปี เท่านั้น
+    }, [selectedPeriod, db]); // ไม่ต้องเอา summaryCache ใส่ในวงเล็บนี้ ป้องกันการโหลดซ้ำซ้อน
+
     // --- ฟังก์ชัน: ค้นหาตำแหน่งปัจจุบันผ่าน GPS ---
     const findMyLocation = () => {
         if (navigator.geolocation) {
