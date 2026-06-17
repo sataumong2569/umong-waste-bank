@@ -16,7 +16,8 @@ import {
     Trash2, ShoppingCart, UserPlus, PackageOpen, Tags, ClipboardList, UploadCloud,
     LayoutList
 } from 'lucide-react';
-import { db } from './firebase';
+import { db, auth } from './firebase';
+import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import {
     collection, doc, getDocs, getDoc, setDoc, updateDoc, deleteDoc, addDoc,
     query, where, orderBy, limit, increment, serverTimestamp, startAfter, onSnapshot, runTransaction
@@ -2725,29 +2726,64 @@ const MemberSummaryView = ({ members, villages, setCurrentPage, globalPrices }) 
         </div>
     );
 };
-// === หน้าจอเข้าสู่ระบบสำหรับเจ้าหน้าที่ (LoginView) ===
+
 // ทำหน้าที่ตรวจสอบ Username และ Password เพื่อให้สิทธิ์ในการเข้าถึงระบบจัดการ (Admin Panel)
+// === หน้าจอเข้าสู่ระบบสำหรับเจ้าหน้าที่ (LoginView) ===
+// ทำหน้าที่ตรวจสอบ Email และ Password ผ่าน Firebase Auth ของจริง
 const LoginView = ({ setIsLoggedIn, staffs, setCurrentUser, logAdminAction }) => {
-    // ใช้ useState ภายในเพื่อเก็บค่าที่พิมพ์ในช่อง Input
-    const [username, setUsername] = useState('');
+    const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
-    const [showPassword, setShowPassword] = useState(false); //  สเตตัสสำหรับเปิด/ปิดตาดูรหัส
+    const [showPassword, setShowPassword] = useState(false);
+    const [isLoading, setIsLoading] = useState(false); // ป้องกันแอดมินกดปุ่มรัวๆ
 
-    // ฟังก์ชันตรวจสอบการเข้าสู่ระบบ
-    const handleLogin = () => {
-        const foundStaff = staffs.find(s => s.username === username && s.password === password);
+    // ฟังก์ชันตรวจสอบการเข้าสู่ระบบของจริง
+    const handleLogin = async () => {
+        if (!email || !password) {
+            setError('กรุณากรอกอีเมลและรหัสผ่านให้ครบถ้วน');
+            return;
+        }
+        setIsLoading(true);
+        setError('');
 
-        if (foundStaff) {
+        try {
+            // 🌟 1. ยิงตรวจสอบรหัสผ่านกับฐานข้อมูลรักษาความปลอดภัยระดับโลกของ Firebase Auth
+            const userCredential = await signInWithEmailAndPassword(auth, email, password);
+            const user = userCredential.user;
+
+            // 🌟 2. ลูกเล่นดึงชื่อแอดมินเดิม: ตัดคำหน้า @ มาเทียบกับ username ในระบบเก่า
+            // เช่น "admin@umong.com" -> ตัดเหลือแค่ "admin" แล้วไปหาใน staffs
+            const emailPrefix = email.split('@')[0];
+            const foundStaff = staffs.find(s => s.email === email || s.username === emailPrefix);
+
+            // ถ้าเจอในระบบเก่าให้ใช้ชื่อนั้น ถ้าไม่เจอให้ใช้ชื่อเริ่มต้น
+            const adminProfile = foundStaff ? { ...foundStaff, email: user.email } : {
+                name: 'เจ้าหน้าที่ (ผู้ดูแลระบบ)',
+                email: user.email
+            };
+
+            // 🌟 3. บันทึกข้อมูลและอนุญาตให้เข้าใช้งาน
             setIsLoggedIn(true);
-            localStorage.setItem('is_logged_in', 'true'); //  จำสถานะเข้าสู่ระบบ
+            localStorage.setItem('is_logged_in', 'true');
+            setCurrentUser(adminProfile);
+            localStorage.setItem('current_user', JSON.stringify(adminProfile));
 
-            setCurrentUser(foundStaff);
-            localStorage.setItem('current_user', JSON.stringify(foundStaff)); //  จำว่าใครล็อกอิน
+            if (typeof logAdminAction === 'function') {
+                logAdminAction(`เข้าสู่ระบบจัดการธนาคารขยะสำเร็จ`);
+            }
 
-            setError('');
-        } else {
-            setError('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
+        } catch (err) {
+            console.error("Login Error:", err.code);
+            // แปลงรหัส Error ฝรั่งให้เป็นภาษาไทยเข้าใจง่าย
+            if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
+                setError('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
+            } else if (err.code === 'auth/invalid-email') {
+                setError('รูปแบบอีเมลไม่ถูกต้อง (เช่น admin@umong.com)');
+            } else {
+                setError('เข้าสู่ระบบล้มเหลว กรุณาลองใหม่อีกครั้ง');
+            }
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -2759,47 +2795,41 @@ const LoginView = ({ setIsLoggedIn, staffs, setCurrentUser, logAdminAction }) =>
                     <LogIn size={32} />
                 </div>
                 <h2 className="font-bold text-2xl text-slate-800">สำหรับเจ้าหน้าที่</h2>
-                <p className="text-slate-500 text-sm mt-1">เข้าสู่ระบบเพื่อจัดการข้อมูลธนาคารขยะ</p>
+                <p className="text-slate-500 text-sm mt-1">เข้าสู่ระบบความปลอดภัย Firebase Auth</p>
             </div>
 
             {/* ส่วนกรอกข้อมูล */}
             <div className="space-y-4">
-                {/* แสดงข้อความ Error สีแดงเมื่อล็อกอินไม่สำเร็จ */}
                 {error && <div className="bg-red-50 text-red-600 p-3 rounded-xl text-sm text-center font-bold border border-red-100">{error}</div>}
 
                 <div>
-                    <label className="block text-sm font-bold mb-1 text-slate-600">ชื่อผู้ใช้</label>
+                    <label className="block text-sm font-bold mb-1 text-slate-600">อีเมลเจ้าหน้าที่</label>
                     <input
-                        type="text"
+                        type="email"
                         className="w-full border-2 border-slate-100 rounded-xl px-4 py-3 bg-slate-50 focus:border-emerald-400 focus:bg-white outline-none transition-all font-medium text-slate-700"
-                        placeholder="admin"
-                        value={username}
+                        placeholder="ตัวอย่าง: admin@umong.com"
+                        value={email}
                         onKeyDown={(e) => {
                             if (e.key === ' ') e.preventDefault();
-                            if (e.key === 'Enter') handleLogin(); //  กด Enter เพื่อรันฟังก์ชันล็อกอิน
+                            if (e.key === 'Enter') handleLogin();
                         }}
-                        onChange={(e) => {
-                            setUsername(e.target.value.replace(/\s/g, ''));
-                        }}
+                        onChange={(e) => setEmail(e.target.value.replace(/\s/g, ''))}
                     />
                 </div>
                 <div>
                     <label className="block text-sm font-bold mb-1 text-slate-600">รหัสผ่าน</label>
                     <div className="relative">
                         <input
-                            type={showPassword ? "text" : "password"} //  สลับชนิดของ input ตามการกดปุ่มตา
+                            type={showPassword ? "text" : "password"}
                             className="w-full border-2 border-slate-100 rounded-xl pl-4 pr-12 py-3 bg-slate-50 focus:border-emerald-400 focus:bg-white outline-none transition-all font-medium text-slate-700"
                             placeholder="••••••••"
                             value={password}
                             onKeyDown={(e) => {
                                 if (e.key === ' ') e.preventDefault();
-                                if (e.key === 'Enter') handleLogin(); //  กด Enter เพื่อรันฟังก์ชันล็อกอิน
+                                if (e.key === 'Enter') handleLogin();
                             }}
-                            onChange={(e) => {
-                                setPassword(e.target.value.replace(/\s/g, ''));
-                            }}
+                            onChange={(e) => setPassword(e.target.value.replace(/\s/g, ''))}
                         />
-                        {/* 🌟 ปุ่มรูปตาสำหรับดูรหัสผ่าน */}
                         <button
                             type="button"
                             onClick={() => setShowPassword(!showPassword)}
@@ -2814,9 +2844,10 @@ const LoginView = ({ setIsLoggedIn, staffs, setCurrentUser, logAdminAction }) =>
                 <div className="pt-2">
                     <button
                         onClick={handleLogin}
-                        className="w-full bg-emerald-600 text-white py-4 rounded-2xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-200 transition-all active:scale-[0.98]"
+                        disabled={isLoading}
+                        className={`w-full py-4 rounded-2xl font-bold shadow-lg shadow-emerald-200 transition-all active:scale-[0.98] ${isLoading ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}
                     >
-                        เข้าสู่ระบบ
+                        {isLoading ? 'กำลังตรวจสอบ...' : 'เข้าสู่ระบบ'}
                     </button>
                 </div>
             </div>
@@ -5590,13 +5621,17 @@ const App = () => {
                             </button>
                         ) : (
                             <button
-                                onClick={() => {
-                                    // 🌟 ล้างค่าออกจากระบบแบบหมดจด (ฝั่ง Desktop)
-                                    setIsLoggedIn(false);
-                                    setCurrentUser(null);
-                                    localStorage.removeItem('is_logged_in');
-                                    localStorage.removeItem('current_user');
-                                    setCurrentPage('dashboard');
+                                onClick={async () => {
+                                    try {
+                                        await signOut(auth); // 🌟 สั่งให้ Firebase เตะออกจากเซิร์ฟเวอร์
+                                        setIsLoggedIn(false);
+                                        setCurrentUser(null);
+                                        localStorage.removeItem('is_logged_in');
+                                        localStorage.removeItem('current_user');
+                                        setCurrentPage('dashboard');
+                                    } catch (error) {
+                                        console.error("ออกจากระบบล้มเหลว:", error);
+                                    }
                                 }}
                                 className="bg-red-50 hover:bg-red-100 text-red-600 px-5 py-2.5 rounded-xl text-xs font-bold transition-all border border-red-100 flex items-center gap-1.5 shadow-sm"
                             >
@@ -5614,14 +5649,18 @@ const App = () => {
                             <span className="font-black text-sm text-white tracking-tight">ธนาคารขยะบ้านป่าลาน</span>
                         </div>
                         <button
-                            onClick={() => {
+                            onClick={async () => {
                                 if (isLoggedIn) {
-                                    // 🌟 กรณี "ออกจากระบบ" (ล้างค่าที่เครื่องจำไว้ทั้งหมด)
-                                    setIsLoggedIn(false);
-                                    setCurrentUser(null);
-                                    localStorage.removeItem('is_logged_in');
-                                    localStorage.removeItem('current_user');
-                                    setCurrentPage('dashboard');
+                                    try {
+                                        await signOut(auth); // 🌟 สั่งให้ Firebase เตะออกจากเซิร์ฟเวอร์
+                                        setIsLoggedIn(false);
+                                        setCurrentUser(null);
+                                        localStorage.removeItem('is_logged_in');
+                                        localStorage.removeItem('current_user');
+                                        setCurrentPage('dashboard');
+                                    } catch (error) {
+                                        console.error("ออกจากระบบล้มเหลว:", error);
+                                    }
                                 } else {
                                     // 🌟 กรณี "เข้าสู่ระบบ"
                                     setCurrentPage('admin');
