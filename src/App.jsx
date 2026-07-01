@@ -158,12 +158,30 @@ const DashboardView = ({ stats, villageData, wasteTypeData, members, setCurrentP
 
     // 🌟 4. ตัวสลับรางข้อมูล "ปริมาณขยะแยกตามประเภท"
     const currentWasteTypeData = useMemo(() => {
-        // ถ้าเป็นการดูย้อนหลัง ให้แกะข้อมูลขยะจากบิลสรุป (histData)
+        // ถ้าเป็นการดูย้อนหลัง ให้รวบยอดขยะย่อยจากบิลสรุป (histData) เข้า 6 หมวดหลัก
         if (isHistorical) {
             const types = ['พลาสติก', 'กระดาษ', 'แก้ว', 'อลูมิเนียม', 'โลหะผสม', 'เหล็ก'];
+            const WASTE_GROUP_MAP = {
+                'พลาสติก': 'พลาสติก', 'พลาสติกรวม': 'พลาสติก', 'พลาสติกใส': 'พลาสติก', 'พลาสติกสกรีน': 'พลาสติก', 'PVC สีฟ้า': 'พลาสติก', 'PVC สีเทา': 'พลาสติก',
+                'กระดาษ': 'กระดาษ', 'กระดาษลัง': 'กระดาษ', 'กระดาษเศษ': 'กระดาษ',
+                'แก้ว': 'แก้ว', 'ขวดแก้ว': 'แก้ว', 'ลังเหล้า': 'แก้ว', 'ลังเบียร์ช้าง': 'แก้ว', 'ลังเบียร์สิงห์/ลีโอ': 'แก้ว',
+                'อลูมิเนียม': 'อลูมิเนียม', 'อลูมิเนียมป๋อง': 'อลูมิเนียม', 'อลูมิเนียมป้อง': 'อลูมิเนียม', 'อลูมิเนียมบาง': 'อลูมิเนียม', 'แผ่น CD': 'อลูมิเนียม', 'แผ่นCD': 'อลูมิเนียม', 'มุ้งลวด': 'อลูมิเนียม',
+                'โลหะผสม': 'โลหะผสม', 'ทองเหลือง': 'โลหะผสม',
+                'เหล็ก': 'เหล็ก', 'สังกะสีกระป๋อง': 'เหล็ก', 'สังกะสีแผ่น': 'เหล็ก'
+            };
+
+            const histTotals = { 'พลาสติก': 0, 'กระดาษ': 0, 'แก้ว': 0, 'อลูมิเนียม': 0, 'โลหะผสม': 0, 'เหล็ก': 0 };
+
+            Object.entries(histData.wasteData || {}).forEach(([type, weight]) => {
+                const mainCategory = WASTE_GROUP_MAP[type];
+                if (mainCategory) {
+                    histTotals[mainCategory] += Number(weight) || 0;
+                }
+            });
+
             return types.map(type => ({
                 name: type,
-                amount: Number(histData.wasteData?.[type]) || 0
+                amount: histTotals[type] || 0
             }));
         }
         // ถ้าดูเดือนปัจจุบัน ให้ใช้ข้อมูลสดที่ส่งมาจาก App.jsx
@@ -651,7 +669,7 @@ const PriceView = ({ isLoggedIn, isEditing, setIsEditing, setCurrentPage, global
             setIsEditing(false);
 
             alert("💾 บันทึกราคากลางและประเภทขยะขึ้นระบบ Cloud สำเร็จ!");
-            if (refreshData) refreshData(); // สั่งให้ App โหลดข้อมูลใหม่
+
         } catch (err) {
             console.error(err);
             alert("❌ บันทึกไม่สำเร็จ กรุณาลองใหม่");
@@ -808,7 +826,7 @@ const PriceView = ({ isLoggedIn, isEditing, setIsEditing, setCurrentPage, global
                                             onChange={(e) => setCalcWeights(prev => ({ ...prev, [item.id]: e.target.value }))}
                                             className="w-full text-right py-2.5 pr-8 rounded-lg bg-slate-50 border border-slate-200 font-bold text-slate-800 text-sm outline-none focus:ring-1 focus:ring-emerald-500 shadow-inner"
                                         />
-                                        <span className="absolute right-2 top-2.5 text-[10px] text-slate-400 font-bold">กก.</span>
+                                        <span className="absolute right-2 top-2.5 text-[10px] text-slate-400 font-bold">{getWasteUnit(item.type)}</span>
                                     </div>
                                 )}
                             </div>
@@ -858,8 +876,25 @@ const EditMemberModal = ({ member, villageData, onSave, onDelete, onClose, globa
     const [inputWeight, setInputWeight] = useState('');
     const [showConfirm, setShowConfirm] = useState(false);
 
-    const CARBON_MULTIPLIERS = { 'พลาสติก': 1.0310, 'กระดาษ': 5.6735, 'ขวดแก้ว': 0.2760, 'อลูมิเนียม': 9.1270, 'โลหะผสม': 4.3910, 'เหล็ก': 1.8320, 'พลาสติก': 1.0310, 'แก้ว': 0.2760, 'เหล็ก': 1.8320 };
+    const CARBON_MULTIPLIERS = {
+        // 1. กลุ่มพลาสติก (1.0310)
+        'พลาสติก': 1.0310, 'พลาสติกรวม': 1.0310, 'พลาสติกใส': 1.0310, 'พลาสติกสกรีน': 1.0310, 'PVC สีฟ้า': 1.0310, 'PVC สีเทา': 1.0310,
 
+        // 2. กลุ่มกระดาษ (5.6735)
+        'กระดาษ': 5.6735, 'กระดาษลัง': 5.6735, 'กระดาษเศษ': 5.6735,
+
+        // 3. กลุ่มแก้ว (0.2760)
+        'แก้ว': 0.2760, 'ขวดแก้ว': 0.2760, 'ลังเหล้า': 0.2760, 'ลังเบียร์ช้าง': 0.2760, 'ลังเบียร์สิงห์/ลีโอ': 0.2760,
+
+        // 4. กลุ่มอลูมิเนียม (9.1270)
+        'อลูมิเนียม': 9.1270, 'อลูมิเนียมป๋อง': 9.1270, 'อลูมิเนียมป้อง': 9.1270, 'อลูมิเนียมบาง': 9.1270, 'แผ่น CD': 9.1270, 'แผ่นCD': 9.1270, 'มุ้งลวด': 9.1270,
+
+        // 5. กลุ่มโลหะผสม (4.3910)
+        'โลหะผสม': 4.3910, 'ทองเหลือง': 4.3910,
+
+        // 6. กลุ่มเหล็ก (1.8320)
+        'เหล็ก': 1.8320, 'สังกะสีกระป๋อง': 1.8320, 'สังกะสีแผ่น': 1.8320
+    };
     useEffect(() => {
         const L = window.L;
         const container = document.getElementById('edit-map-container');
@@ -1069,7 +1104,7 @@ const EditMemberModal = ({ member, villageData, onSave, onDelete, onClose, globa
                                                         <div className="divide-y divide-slate-100">
                                                             {Object.entries(person.wasteData).map(([wType, wWeight]) => (
                                                                 <div key={wType} className="px-4 py-2.5 flex justify-between items-center text-sm">
-                                                                    <span className="font-bold text-slate-700">{wType} <span className="text-slate-400">({wWeight} กก.)</span></span>
+                                                                    <span className="font-bold text-slate-700">{wType} <span className="text-slate-400">({wWeight} {getWasteUnit(wType)})</span></span>
                                                                     <button type="button" onClick={() => handleDeleteWasteRecord(index, wType)} className="text-red-400 hover:text-red-600 bg-red-50 p-1.5 rounded-md transition"><Trash2 size={16} /></button>
                                                                 </div>
                                                             ))}
@@ -1166,7 +1201,23 @@ const MembersView = ({ members, setMembers, villages, setVillages, isLoggedIn, l
         }
 
         const CARBON_MULTIPLIERS = {
-            'พลาสติก': 1.0310, 'กระดาษ': 5.6735, 'แก้ว': 0.2760, 'อลูมิเนียม': 9.1270, 'โลหะผสม': 4.3910, 'เหล็ก': 1.8320
+            // 1. กลุ่มพลาสติก (1.0310)
+            'พลาสติก': 1.0310, 'พลาสติกรวม': 1.0310, 'พลาสติกใส': 1.0310, 'พลาสติกสกรีน': 1.0310, 'PVC สีฟ้า': 1.0310, 'PVC สีเทา': 1.0310,
+
+            // 2. กลุ่มกระดาษ (5.6735)
+            'กระดาษ': 5.6735, 'กระดาษลัง': 5.6735, 'กระดาษเศษ': 5.6735,
+
+            // 3. กลุ่มแก้ว (0.2760)
+            'แก้ว': 0.2760, 'ขวดแก้ว': 0.2760, 'ลังเหล้า': 0.2760, 'ลังเบียร์ช้าง': 0.2760, 'ลังเบียร์สิงห์/ลีโอ': 0.2760,
+
+            // 4. กลุ่มอลูมิเนียม (9.1270)
+            'อลูมิเนียม': 9.1270, 'อลูมิเนียมป๋อง': 9.1270, 'อลูมิเนียมป้อง': 9.1270, 'อลูมิเนียมบาง': 9.1270, 'แผ่น CD': 9.1270, 'แผ่นCD': 9.1270, 'มุ้งลวด': 9.1270,
+
+            // 5. กลุ่มโลหะผสม (4.3910)
+            'โลหะผสม': 4.3910, 'ทองเหลือง': 4.3910,
+
+            // 6. กลุ่มเหล็ก (1.8320)
+            'เหล็ก': 1.8320, 'สังกะสีกระป๋อง': 1.8320, 'สังกะสีแผ่น': 1.8320
         };
 
         //  1. ดักจับข้อมูล: ถ้าครอบครัวถูกลบจนเกลี้ยง ให้สร้างกล่องข้อมูลเปล่าไว้กันระบบพัง
@@ -1255,7 +1306,6 @@ const MembersView = ({ members, setMembers, villages, setVillages, isLoggedIn, l
         }
 
         setEditingMember(null);
-        refreshData();
     };
 
     // 🗑️ ฟังก์ชันลบข้อมูลบ้านสมาชิกออกจากระบบอย่างถาวร
@@ -1296,7 +1346,7 @@ const MembersView = ({ members, setMembers, villages, setVillages, isLoggedIn, l
                 localStorage.setItem('local_members_data', JSON.stringify(nextMembers));
                 setEditingMember(null);
 
-                alert("🗑️ ลบข้อมูลครัวเรือนและหักลบสถิติขยะออกจากระบบสำเร็จ"); refreshData();
+                alert("🗑️ ลบข้อมูลครัวเรือนและหักลบสถิติขยะออกจากระบบสำเร็จ");
             } catch (err) {
                 console.error("ลบข้อมูลผิดพลาด:", err);
                 alert("❌ เกิดข้อผิดพลาดในการลบข้อมูลจากระบบ");
@@ -1935,9 +1985,6 @@ const ManageBalanceView = ({ members, villages, setMembers, db, logAdminAction, 
 
             setEditingPersonId(null);
 
-            // รีเฟรชข้อมูลให้ตารางอัปเดตทันที
-            if (typeof refreshData === 'function') await refreshData();
-
         } catch (error) {
             console.error("Error saving balance:", error);
             alert("❌ เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่");
@@ -1990,9 +2037,6 @@ const ManageBalanceView = ({ members, villages, setMembers, db, logAdminAction, 
             if (typeof logAdminAction === 'function') {
                 logAdminAction(`หักยอดเงินแบบกลุ่ม หมวด: ${targetVillage ? targetVillage.name : 'ไม่ระบุ'} จำนวน ${checkedPersonKeys.length} คน (หักคนละ ฿${deductAmount.toLocaleString()})`);
             }
-
-            // โหลดข้อมูลใหม่เพื่อให้หน้าจออัปเดตทันที
-            if (typeof refreshData === 'function') await refreshData();
 
             setIsBulkModalOpen(false);
             alert(`✅ ทำการหักยอดเงินสำเร็จแล้วทั้งสิ้น ${checkedPersonKeys.length} คน!`);
@@ -3108,12 +3152,23 @@ const VillagesView = ({ villageData, members, setSelectedVillage, setCurrentPage
     // สูตรคำนวณคาร์บอน (Factor อ้างอิงจาก อบก.)
     const calculateCarbon = (wasteData) => {
         const FACTORS = {
-            'พลาสติก': 1.0310,
-            'กระดาษ': 5.6735,
-            'แก้ว': 0.2760,
-            'อลูมิเนียม': 9.1270,
-            'โลหะผสม': 4.3910,
-            'เหล็ก': 1.8320
+            // 1. กลุ่มพลาสติก (1.0310)
+            'พลาสติก': 1.0310, 'พลาสติกรวม': 1.0310, 'พลาสติกใส': 1.0310, 'พลาสติกสกรีน': 1.0310, 'PVC สีฟ้า': 1.0310, 'PVC สีเทา': 1.0310,
+
+            // 2. กลุ่มกระดาษ (5.6735)
+            'กระดาษ': 5.6735, 'กระดาษลัง': 5.6735, 'กระดาษเศษ': 5.6735,
+
+            // 3. กลุ่มแก้ว (0.2760)
+            'แก้ว': 0.2760, 'ขวดแก้ว': 0.2760, 'ลังเหล้า': 0.2760, 'ลังเบียร์ช้าง': 0.2760, 'ลังเบียร์สิงห์/ลีโอ': 0.2760,
+
+            // 4. กลุ่มอลูมิเนียม (9.1270)
+            'อลูมิเนียม': 9.1270, 'อลูมิเนียมป๋อง': 9.1270, 'อลูมิเนียมป้อง': 9.1270, 'อลูมิเนียมบาง': 9.1270, 'แผ่น CD': 9.1270, 'แผ่นCD': 9.1270, 'มุ้งลวด': 9.1270,
+
+            // 5. กลุ่มโลหะผสม (4.3910)
+            'โลหะผสม': 4.3910, 'ทองเหลือง': 4.3910,
+
+            // 6. กลุ่มเหล็ก (1.8320)
+            'เหล็ก': 1.8320, 'สังกะสีกระป๋อง': 1.8320, 'สังกะสีแผ่น': 1.8320
         };
         return Object.entries(wasteData || {}).reduce((total, [type, weight]) => {
             return total + (Number(weight) * (FACTORS[type] || 0));
@@ -3322,8 +3377,25 @@ const AddMemberModal = ({ initialLat, initialLng, villageData, onSave, onClose, 
     const [inputWeight, setInputWeight] = useState('');
     const [showConfirm, setShowConfirm] = useState(false);
 
-    const CARBON_MULTIPLIERS = { 'พลาสติก': 1.0310, 'กระดาษ': 5.6735, 'แก้ว': 0.2760, 'อลูมิเนียม': 9.1270, 'โลหะผสม': 4.3910, 'เหล็ก': 1.8320 };
+    const CARBON_MULTIPLIERS = {
+        // 1. กลุ่มพลาสติก (1.0310)
+        'พลาสติก': 1.0310, 'พลาสติกรวม': 1.0310, 'พลาสติกใส': 1.0310, 'พลาสติกสกรีน': 1.0310, 'PVC สีฟ้า': 1.0310, 'PVC สีเทา': 1.0310,
 
+        // 2. กลุ่มกระดาษ (5.6735)
+        'กระดาษ': 5.6735, 'กระดาษลัง': 5.6735, 'กระดาษเศษ': 5.6735,
+
+        // 3. กลุ่มแก้ว (0.2760)
+        'แก้ว': 0.2760, 'ขวดแก้ว': 0.2760, 'ลังเหล้า': 0.2760, 'ลังเบียร์ช้าง': 0.2760, 'ลังเบียร์สิงห์/ลีโอ': 0.2760,
+
+        // 4. กลุ่มอลูมิเนียม (9.1270)
+        'อลูมิเนียม': 9.1270, 'อลูมิเนียมป๋อง': 9.1270, 'อลูมิเนียมป้อง': 9.1270, 'อลูมิเนียมบาง': 9.1270, 'แผ่น CD': 9.1270, 'แผ่นCD': 9.1270, 'มุ้งลวด': 9.1270,
+
+        // 5. กลุ่มโลหะผสม (4.3910)
+        'โลหะผสม': 4.3910, 'ทองเหลือง': 4.3910,
+
+        // 6. กลุ่มเหล็ก (1.8320)
+        'เหล็ก': 1.8320, 'สังกะสีกระป๋อง': 1.8320, 'สังกะสีแผ่น': 1.8320
+    };
     const addMemberField = () => setNewMember({ ...newMember, familyMembers: [...newMember.familyMembers, { id: Date.now().toString() + Math.random().toString(36).substr(2, 5), name: '', balance: 0, credit: 0, wasteData: {}, hasWelfare: false, isSorted: false }] });
     const updateMemberField = (index, field, value) => { const updatedFamily = [...newMember.familyMembers]; updatedFamily[index] = { ...updatedFamily[index], [field]: value }; setNewMember({ ...newMember, familyMembers: updatedFamily }); };
     const removeMemberField = (index) => { const updatedFamily = newMember.familyMembers.filter((_, i) => i !== index); setNewMember({ ...newMember, familyMembers: updatedFamily.length > 0 ? updatedFamily : [{ id: Date.now().toString(), name: '', balance: 0, credit: 0, wasteData: {}, hasWelfare: false, isSorted: false }] }); };
@@ -3533,12 +3605,14 @@ const AddMemberModal = ({ initialLat, initialLng, villageData, onSave, onClose, 
                                                 <div className="flex flex-col sm:flex-row gap-2 mb-4 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
                                                     <select value={selectedWasteId} onChange={e => setSelectedWasteId(e.target.value)} className="w-full sm:flex-1 bg-white border border-slate-200 px-3 py-2.5 rounded-lg text-sm font-bold text-slate-700 outline-none">
                                                         <option value="" disabled>-- เลือกขยะ --</option>
-                                                        {globalPrices && globalPrices.map(p => <option key={p.id} value={p.id}>{p.type} (฿{p.price})</option>)}
+                                                        {globalPrices && globalPrices.map(p => <option key={p.id} value={p.id}>{p.type} (฿{p.price}/{getWasteUnit(p.type)})</option>)}
                                                     </select>
                                                     <div className="flex gap-2">
                                                         <div className="relative w-full sm:w-28">
                                                             <input type="number" step="any" placeholder="น้ำหนัก" value={inputWeight} onChange={e => setInputWeight(e.target.value)} className="w-full bg-white border border-slate-200 pl-3 pr-8 py-2.5 rounded-lg text-sm font-black text-slate-700 outline-none text-right" />
-                                                            <span className="absolute right-3 top-3 text-[10px] text-slate-400 font-bold">กก.</span>
+                                                            <span className="absolute right-3 top-3 text-[10px] text-slate-400 font-bold">
+                                                                {selectedWasteId ? getWasteUnit(globalPrices?.find(p => String(p.id) === String(selectedWasteId))?.type) : 'กก.'}
+                                                            </span>
                                                         </div>
                                                         <button type="button" onClick={() => handleAddInitialWaste(index)} className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2.5 rounded-lg text-sm transition shrink-0">เพิ่ม</button>
                                                     </div>
@@ -3550,7 +3624,7 @@ const AddMemberModal = ({ initialLat, initialLng, villageData, onSave, onClose, 
                                                         <div className="divide-y divide-slate-100">
                                                             {Object.entries(person.wasteData).map(([wType, wWeight]) => (
                                                                 <div key={wType} className="px-4 py-2.5 flex justify-between items-center text-sm">
-                                                                    <span className="font-bold text-slate-700">{wType} <span className="text-slate-400">({wWeight} กก.)</span></span>
+                                                                    <span className="font-bold text-slate-700">{wType} <span className="text-slate-400">({wWeight} {getWasteUnit(wType)})</span></span>
                                                                     <button type="button" onClick={() => handleRemoveWasteItem(index, wType)} className="text-red-400 hover:text-red-600 bg-red-50 p-1.5 rounded-md transition"><Trash2 size={16} /></button>
                                                                 </div>
                                                             ))}
@@ -3630,9 +3704,24 @@ const RecordWasteView = ({ members, villages, setMembers, setVillages, db, logAd
     const [inputWeight, setInputWeight] = useState('');
     const [currentBasket, setCurrentBasket] = useState([]);
 
-    // ค่าคาร์บอน (เฉพาะ 6 ประเภทเดิมที่มีผล)
     const CARBON_MULTIPLIERS = {
-        'พลาสติก': 1.0310, 'กระดาษ': 5.6735, 'แก้ว': 0.2760, 'อลูมิเนียม': 9.1270, 'โลหะผสม': 4.3910, 'เหล็ก': 1.8320
+        // 1. กลุ่มพลาสติก (1.0310)
+        'พลาสติก': 1.0310, 'พลาสติกรวม': 1.0310, 'พลาสติกใส': 1.0310, 'พลาสติกสกรีน': 1.0310, 'PVC สีฟ้า': 1.0310, 'PVC สีเทา': 1.0310,
+
+        // 2. กลุ่มกระดาษ (5.6735)
+        'กระดาษ': 5.6735, 'กระดาษลัง': 5.6735, 'กระดาษเศษ': 5.6735,
+
+        // 3. กลุ่มแก้ว (0.2760)
+        'แก้ว': 0.2760, 'ขวดแก้ว': 0.2760, 'ลังเหล้า': 0.2760, 'ลังเบียร์ช้าง': 0.2760, 'ลังเบียร์สิงห์/ลีโอ': 0.2760,
+
+        // 4. กลุ่มอลูมิเนียม (9.1270)
+        'อลูมิเนียม': 9.1270, 'อลูมิเนียมป๋อง': 9.1270, 'อลูมิเนียมป้อง': 9.1270, 'อลูมิเนียมบาง': 9.1270, 'แผ่น CD': 9.1270, 'แผ่นCD': 9.1270, 'มุ้งลวด': 9.1270,
+
+        // 5. กลุ่มโลหะผสม (4.3910)
+        'โลหะผสม': 4.3910, 'ทองเหลือง': 4.3910,
+
+        // 6. กลุ่มเหล็ก (1.8320)
+        'เหล็ก': 1.8320, 'สังกะสีกระป๋อง': 1.8320, 'สังกะสีแผ่น': 1.8320
     };
 
     // 🌟 2. สรุปยอดเงินและคาร์บอนอัตโนมัติจากตะกร้า
@@ -3777,7 +3866,6 @@ const RecordWasteView = ({ members, villages, setMembers, setVillages, db, logAd
             // 6. รีเฟรชหน้าจอ
             setActivePersonKey(null);
             setCurrentBasket([]);
-            if (typeof refreshData === 'function') await refreshData();
 
             alert(`✅ บันทึกรายการฝากของ ${personName} เรียบร้อย! (+฿${finalBalanceToAdd.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })})`);
 
@@ -3867,7 +3955,7 @@ const RecordWasteView = ({ members, villages, setMembers, setVillages, db, logAd
                                                         >
                                                             <option value="" disabled>-- เลือกประเภทขยะ --</option>
                                                             {globalPrices && globalPrices.map(p => (
-                                                                <option key={p.id} value={p.id}>{p.type} (฿{p.price}/กก.)</option>
+                                                                <option key={p.id} value={p.id}>{p.type} (฿{p.price}/{getWasteUnit(p.type)}))</option>
                                                             ))}
                                                         </select>
 
@@ -3902,7 +3990,7 @@ const RecordWasteView = ({ members, villages, setMembers, setVillages, db, logAd
                                                                     <div key={item.rowId} className="px-4 py-3 flex justify-between items-center hover:bg-slate-50">
                                                                         <div className="flex flex-col">
                                                                             <span className="font-bold text-slate-800 text-sm">{index + 1}. {item.type}</span>
-                                                                            <span className="text-[11px] text-slate-500 font-medium">{item.weight} กก. × ฿{item.pricePerKg}</span>
+                                                                            <span className="text-[11px] text-slate-500 font-medium">{item.weight} {getWasteUnit(item.type)} × ฿{item.pricePerKg}</span>
                                                                         </div>
                                                                         <div className="flex items-center gap-4">
                                                                             <span className="font-black text-amber-600">฿{item.totalMoney.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
@@ -3999,8 +4087,23 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
     const itemsPerPage = 10;
 
     const CARBON_MULTIPLIERS = {
-        'พลาสติก': 1.0310, 'กระดาษ': 5.6735, 'แก้ว': 0.2760,
-        'อลูมิเนียม': 9.1270, 'โลหะผสม': 4.3910, 'เหล็ก': 1.8320
+        // 1. กลุ่มพลาสติก (1.0310)
+        'พลาสติก': 1.0310, 'พลาสติกรวม': 1.0310, 'พลาสติกใส': 1.0310, 'พลาสติกสกรีน': 1.0310, 'PVC สีฟ้า': 1.0310, 'PVC สีเทา': 1.0310,
+
+        // 2. กลุ่มกระดาษ (5.6735)
+        'กระดาษ': 5.6735, 'กระดาษลัง': 5.6735, 'กระดาษเศษ': 5.6735,
+
+        // 3. กลุ่มแก้ว (0.2760)
+        'แก้ว': 0.2760, 'ขวดแก้ว': 0.2760, 'ลังเหล้า': 0.2760, 'ลังเบียร์ช้าง': 0.2760, 'ลังเบียร์สิงห์/ลีโอ': 0.2760,
+
+        // 4. กลุ่มอลูมิเนียม (9.1270)
+        'อลูมิเนียม': 9.1270, 'อลูมิเนียมป๋อง': 9.1270, 'อลูมิเนียมป้อง': 9.1270, 'อลูมิเนียมบาง': 9.1270, 'แผ่น CD': 9.1270, 'แผ่นCD': 9.1270, 'มุ้งลวด': 9.1270,
+
+        // 5. กลุ่มโลหะผสม (4.3910)
+        'โลหะผสม': 4.3910, 'ทองเหลือง': 4.3910,
+
+        // 6. กลุ่มเหล็ก (1.8320)
+        'เหล็ก': 1.8320, 'สังกะสีกระป๋อง': 1.8320, 'สังกะสีแผ่น': 1.8320
     };
 
     const wasteTypes = React.useMemo(() => {
@@ -4087,7 +4190,7 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
         }
     };
 
-    // 🌟 2. ฟังก์ชันประมวลผล (อัปเกรด: ค้นหาคนเดิมแล้วบวกยอดเพิ่ม)
+    // 🌟 2. ฟังก์ชันประมวลผล (อัปเกรด: ไดนามิก + ค้นหาคนเดิมแล้วบวกยอดเพิ่ม)
     const processImportData = (data) => {
         // ดึงข้อมูลบ้านทั้งหมดที่มีในระบบมาเป็นฐานก่อน
         const houseMap = {};
@@ -4099,6 +4202,9 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
 
         let totalPersons = 0;
         let totalMoney = 0;
+
+        // 🌟 พระเอกอยู่ตรงนี้: กำหนดชื่อคอลัมน์ที่เป็น "ข้อมูลพื้นฐาน" เอาไว้
+        const standardColumns = ['บ้านเลขที่', 'หมวดหมู่', 'ชื่อสมาชิก', 'การคัดแยก', 'สิทธิ์สวัสดิการ', 'ยอดเงินตั้งต้น'];
 
         data.forEach((row, index) => {
             const houseNo = row['บ้านเลขที่'];
@@ -4113,11 +4219,19 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
 
             const wasteToAdd = {};
             let carbonToAdd = 0;
-            wasteTypes.forEach(type => {
-                const weight = Number(row[type]) || 0;
-                if (weight > 0) {
-                    wasteToAdd[type] = weight;
-                    if (CARBON_MULTIPLIERS[type]) carbonToAdd += weight * CARBON_MULTIPLIERS[type];
+
+            // 🌟 1. ไม่ใช้ wasteTypes แล้ว! แต่จะกวาดสายตาอ่านทุกคอลัมน์ใน Excel เลย
+            Object.keys(row).forEach(columnName => {
+                // ถ้าคอลัมน์ที่อ่านอยู่ "ไม่ใช่" ข้อมูลพื้นฐาน -> เหมาว่ามันคือ "ชื่อขยะ" ทั้งหมด!
+                if (!standardColumns.includes(columnName)) {
+                    const weight = Number(row[columnName]) || 0;
+                    if (weight > 0) {
+                        wasteToAdd[columnName] = weight;
+                        // ถ้าขยะแปลกๆ นี้มีสูตรคาร์บอนตรงกับที่เราตั้งไว้ ก็ให้คูณ ถ้าไม่มีก็ข้ามไป
+                        if (CARBON_MULTIPLIERS[columnName]) {
+                            carbonToAdd += weight * CARBON_MULTIPLIERS[columnName];
+                        }
+                    }
                 }
             });
 
@@ -4220,12 +4334,17 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
             if (!villageAgg[category]) villageAgg[category] = { id: category, name: category, realBalance: 0 };
             villageAgg[category].realBalance += (Number(row['ยอดเงินตั้งต้น']) || 0);
 
-            wasteTypes.forEach(type => {
-                const w = Number(row[type]) || 0;
-                if (w > 0) {
-                    wasteAgg[type] = (wasteAgg[type] || 0) + w;
-                    sumWaste += w;
-                    if (CARBON_MULTIPLIERS[type]) sumCarbon += w * CARBON_MULTIPLIERS[type];
+            // 🌟 2. ตรงนี้ก็ต้องกวาดอ่านทุกคอลัมน์ใหม่เหมือนกัน เพื่อรวมน้ำหนักขยะทั้งหมดในบิล
+            Object.keys(row).forEach(columnName => {
+                if (!standardColumns.includes(columnName)) {
+                    const w = Number(row[columnName]) || 0;
+                    if (w > 0) {
+                        wasteAgg[columnName] = (wasteAgg[columnName] || 0) + w;
+                        sumWaste += w;
+                        if (CARBON_MULTIPLIERS[columnName]) {
+                            sumCarbon += w * CARBON_MULTIPLIERS[columnName];
+                        }
+                    }
                 }
             });
         });
@@ -4272,8 +4391,8 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
             }
             alert(`🎉 นำเข้าข้อมูล จาก "${importedFileName}" สำเร็จเรียบร้อยแล้วทั้งสิ้น ${summary.houses} หลัง`);
 
-            if (typeof refreshData === 'function') refreshData();
-            setCurrentPage('members'); // กลับไปหน้าสมาชิก
+            if (typeof refreshData === 'function')
+                setCurrentPage('members'); // กลับไปหน้าสมาชิก
         } catch (err) {
             console.error(err);
             alert("❌ เกิดข้อผิดพลาดระหว่างอัปโหลด กรุณาตรวจสอบสัญญาณอินเทอร์เน็ต");
@@ -4282,6 +4401,7 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
     };
     const totalPages = Math.max(1, Math.ceil(previewHouses.length / itemsPerPage));
     const currentViewHouses = previewHouses.slice((previewPage - 1) * itemsPerPage, previewPage * itemsPerPage);
+
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500 text-slate-700">
@@ -4608,6 +4728,17 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
             </div>
         </div>
     );
+};
+const getWasteUnit = (wasteName) => {
+    const machineItems = ['พัดลมใหญ่', 'พัดลมเล็ก', 'โทรทัศน์', 'เครื่องซักผ้า', 'ตู้เย็น', 'มอเตอร์', 'วิทยุ', 'เครื่องทำน้ำอุ่น'];
+    const boxItems = ['ลังเหล้า', 'ลังเบียร์', 'ลังเบียร์ช้าง', 'ลังเบียร์สิงห์/ลีโอ'];
+
+    if (machineItems.includes(wasteName)) {
+        return 'เครื่อง';
+    } else if (boxItems.includes(wasteName)) {
+        return 'ลัง';
+    }
+    return 'กก.';
 };
 const App = () => {
     // --- DATABASE: ส่วนเก็บข้อมูลหลักของแอปพลิเคชัน ---
@@ -5114,12 +5245,23 @@ const App = () => {
         if (!allMembers || allMembers.length === 0) return 0;
 
         const FACTORS = {
-            'พลาสติก': 1.0310,
-            'กระดาษ': 5.6735,
-            'แก้ว': 0.2760,
-            'อลูมิเนียม': 9.1270,
-            'โลหะผสม': 4.3910,
-            'เหล็ก': 1.8320
+            // 1. กลุ่มพลาสติก (1.0310)
+            'พลาสติก': 1.0310, 'พลาสติกรวม': 1.0310, 'พลาสติกใส': 1.0310, 'พลาสติกสกรีน': 1.0310, 'PVC สีฟ้า': 1.0310, 'PVC สีเทา': 1.0310,
+
+            // 2. กลุ่มกระดาษ (5.6735)
+            'กระดาษ': 5.6735, 'กระดาษลัง': 5.6735, 'กระดาษเศษ': 5.6735,
+
+            // 3. กลุ่มแก้ว (0.2760)
+            'แก้ว': 0.2760, 'ขวดแก้ว': 0.2760, 'ลังเหล้า': 0.2760, 'ลังเบียร์ช้าง': 0.2760, 'ลังเบียร์สิงห์/ลีโอ': 0.2760,
+
+            // 4. กลุ่มอลูมิเนียม (9.1270)
+            'อลูมิเนียม': 9.1270, 'อลูมิเนียมป๋อง': 9.1270, 'อลูมิเนียมป้อง': 9.1270, 'อลูมิเนียมบาง': 9.1270, 'แผ่น CD': 9.1270, 'แผ่นCD': 9.1270, 'มุ้งลวด': 9.1270,
+
+            // 5. กลุ่มโลหะผสม (4.3910)
+            'โลหะผสม': 4.3910, 'ทองเหลือง': 4.3910,
+
+            // 6. กลุ่มเหล็ก (1.8320)
+            'เหล็ก': 1.8320, 'สังกะสีกระป๋อง': 1.8320, 'สังกะสีแผ่น': 1.8320
         };
 
         let totalCarbon = 0;
@@ -5266,18 +5408,33 @@ const App = () => {
     const wasteTypeData = useMemo(() => {
         const types = ['พลาสติก', 'กระดาษ', 'แก้ว', 'อลูมิเนียม', 'โลหะผสม', 'เหล็ก'];
 
-        // 1. รวมขยะทุกประเภทจากสมาชิกทุกคน
-        const totals = allMembers.reduce((acc, m) => {
-            Object.entries(m.wasteData || {}).forEach(([type, weight]) => {
-                acc[type] = (acc[type] || 0) + Number(weight);
-            });
-            return acc;
-        }, {});
+        // 🌟 สร้างตัวกรองรวบยอด: ขยะย่อยชื่ออะไร ให้ไปตกที่ถังหลักใบไหน
+        const WASTE_GROUP_MAP = {
+            'พลาสติก': 'พลาสติก', 'พลาสติกรวม': 'พลาสติก', 'พลาสติกใส': 'พลาสติก', 'พลาสติกสกรีน': 'พลาสติก', 'PVC สีฟ้า': 'พลาสติก', 'PVC สีเทา': 'พลาสติก',
+            'กระดาษ': 'กระดาษ', 'กระดาษลัง': 'กระดาษ', 'กระดาษเศษ': 'กระดาษ',
+            'แก้ว': 'แก้ว', 'ขวดแก้ว': 'แก้ว', 'ลังเหล้า': 'แก้ว', 'ลังเบียร์ช้าง': 'แก้ว', 'ลังเบียร์สิงห์/ลีโอ': 'แก้ว',
+            'อลูมิเนียม': 'อลูมิเนียม', 'อลูมิเนียมป๋อง': 'อลูมิเนียม', 'อลูมิเนียมป้อง': 'อลูมิเนียม', 'อลูมิเนียมบาง': 'อลูมิเนียม', 'แผ่น CD': 'อลูมิเนียม', 'แผ่นCD': 'อลูมิเนียม', 'มุ้งลวด': 'อลูมิเนียม',
+            'โลหะผสม': 'โลหะผสม', 'ทองเหลือง': 'โลหะผสม',
+            'เหล็ก': 'เหล็ก', 'สังกะสีกระป๋อง': 'เหล็ก', 'สังกะสีแผ่น': 'เหล็ก'
+        };
 
-        // 2. Map ออกมาเป็นอาร์เรย์เพื่อให้ Recharts นำไปวาดกราฟ
+        // ตั้งต้นถังเปล่า 6 ใบ
+        const mainTotals = { 'พลาสติก': 0, 'กระดาษ': 0, 'แก้ว': 0, 'อลูมิเนียม': 0, 'โลหะผสม': 0, 'เหล็ก': 0 };
+
+        // วนลูปขยะจากสมาชิกทุกคน แล้วโยนลงถังหลัก
+        allMembers.forEach(m => {
+            Object.entries(m.wasteData || {}).forEach(([type, weight]) => {
+                const mainCategory = WASTE_GROUP_MAP[type];
+                if (mainCategory) { // ถ้าตรงกับ 6 หมวดหลัก ให้บวกน้ำหนักรวมเข้าไป
+                    mainTotals[mainCategory] += Number(weight) || 0;
+                }
+            });
+        });
+
+        // ส่งออกให้กราฟแท่ง
         return types.map(type => ({
             name: type,
-            amount: totals[type] || 0
+            amount: mainTotals[type] || 0
         }));
     }, [allMembers]);
     // 🌟 1. State ควบคุม Loading และเช็กว่าโหลดแล้วหรือยัง
@@ -5643,7 +5800,7 @@ const App = () => {
 
                 {/* Header Mobile */}
                 <header className="md:hidden bg-emerald-900 sticky top-0 z-50 shadow-sm">
-                    <div className="px-4 h-16 flex items-center justify-between">
+                    <div className="px-4 h-16 flex items-center justify-between relative z-20 bg-emerald-900">
                         <div className="flex items-center gap-3 cursor-pointer" onClick={() => { setCurrentPage('dashboard'); setIsMenuOpen(false); }}>
                             <img src={webLogo} alt="โลโก้" className="w-8 h-8 object-contain bg-white rounded-lg p-0.5" />
                             <span className="font-black text-sm text-white tracking-tight">ธนาคารขยะบ้านป่าลาน</span>
@@ -5662,7 +5819,6 @@ const App = () => {
                                         console.error("ออกจากระบบล้มเหลว:", error);
                                     }
                                 } else {
-                                    // 🌟 กรณี "เข้าสู่ระบบ"
                                     setCurrentPage('admin');
                                 }
                             }}
@@ -5671,7 +5827,9 @@ const App = () => {
                             {isLoggedIn ? 'ออกจากระบบ' : 'เข้าสู่ระบบ'}
                         </button>
                     </div>
-                    <div onClick={() => setIsMenuOpen(!isMenuOpen)} className="bg-emerald-950 text-white px-4 py-3.5 flex items-center justify-between border-t border-emerald-800 cursor-pointer active:bg-emerald-900 transition-colors select-none">
+
+                    {/* แถบกด Hamburger Menu */}
+                    <div onClick={() => setIsMenuOpen(!isMenuOpen)} className="bg-emerald-950 text-white px-4 py-3.5 flex items-center justify-between border-t border-emerald-800 cursor-pointer active:bg-emerald-900 transition-colors select-none relative z-20">
                         <div className="flex items-center gap-2 font-black text-xs tracking-wide">
                             <Menu size={16} className="text-emerald-400" />
                             <span>เมนูตัวเลือกระบบ</span>
@@ -5680,22 +5838,54 @@ const App = () => {
                             <ChevronDown size={16} className="text-emerald-400" />
                         </div>
                     </div>
-                </header>
 
-                {/* Mobile Menu Dropdown */}
-                {isMenuOpen && (
-                    <div className="md:hidden bg-white border-b border-slate-200 p-4 flex flex-col gap-1.5 shadow-xl animate-fadeIn sticky top-[105px] z-40">
+                    {/* 🌟 1. ฉากหลังสีดำ (Overlay) - คลุมเนื้อหาที่เหลือเวลากางเมนู */}
+                    <div
+                        className={`fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity duration-300 ease-in-out ${isMenuOpen ? 'opacity-100 visible' : 'opacity-0 invisible pointer-events-none'
+                            }`}
+                        style={{ top: '105px', zIndex: 10 }} // ให้เริ่มคลุมต่อจากขอบล่าง Header
+                        onClick={() => setIsMenuOpen(false)} // กดฉากหลังแล้วเมนูหดกลับ
+                    ></div>
+
+                    {/* 🌟 2. ตัวเมนู Dropdown - ซ่อนไว้ใต้ Header พอดีเป๊ะ */}
+                    <div
+                        className={`absolute top-full left-0 right-0 bg-white border-b-4 border-emerald-500 p-4 flex flex-col gap-1.5 shadow-[0_20px_25px_-5px_rgba(0,0,0,0.3)] transition-all duration-300 ease-in-out origin-top ${isMenuOpen
+                            ? 'translate-y-0 opacity-100 visible'
+                            : '-translate-y-5 opacity-0 invisible pointer-events-none'
+                            }`}
+                        style={{ zIndex: 15 }}
+                    >
                         <MobileNavItem active={currentPage === 'dashboard'} onClick={() => { setCurrentPage('dashboard'); setIsMapLoaded(false); setIsMenuOpen(false); }} label="📊 ภาพรวมระบบ" icon={<LayoutDashboard size={20} />} />
                         <MobileNavItem active={currentPage === 'villages'} onClick={() => { setCurrentPage('villages'); setIsMapLoaded(false); setIsMenuOpen(false); }} label="🏠 ข้อมูลสมาชิก" icon={<Users size={20} />} />
                         <MobileNavItem active={currentPage === 'prices'} onClick={() => { setCurrentPage('prices'); setIsMapLoaded(false); setIsMenuOpen(false); }} label="🪙 ราคารับซื้อ" icon={<Wallet size={20} />} />
                         <MobileNavItem active={currentPage === 'map'} onClick={() => { setCurrentPage('map'); setIsMenuOpen(false); }} label="🗺️ แผนที่ครัวเรือน" icon={<MapIcon size={20} />} />
+
                         {isLoggedIn && (
-                            <button onClick={() => { setCurrentPage('admin'); setIsMapLoaded(false); setIsMenuOpen(false); }} className="flex items-center gap-3 p-3 rounded-xl text-sm font-black mt-1 bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors">
+                            <button onClick={() => { setCurrentPage('admin'); setIsMapLoaded(false); setIsMenuOpen(false); }} className="flex items-center gap-3 p-3 rounded-xl text-sm font-black mt-2 bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors shadow-sm">
                                 <LayoutDashboard size={20} /> <span>🛠️ จัดการระบบแอดมิน</span>
                             </button>
                         )}
                     </div>
-                )}
+                </header>
+
+                {/* Mobile Menu Dropdown (โหลดรอไว้เลย แต่ซ่อนด้วย CSS) */}
+                <div
+                    className={`md:hidden bg-white border-b border-slate-200 p-4 flex flex-col gap-1.5 shadow-2xl fixed left-0 right-0 z-40 transition-all duration-300 ease-in-out origin-top ${isMenuOpen
+                        ? 'translate-y-0 opacity-100 visible top-[105px]'
+                        : '-translate-y-4 opacity-0 invisible top-[105px] pointer-events-none'
+                        }`}
+                >
+                    <MobileNavItem active={currentPage === 'dashboard'} onClick={() => { setCurrentPage('dashboard'); setIsMapLoaded(false); setIsMenuOpen(false); }} label="📊 ภาพรวมระบบ" icon={<LayoutDashboard size={20} />} />
+                    <MobileNavItem active={currentPage === 'villages'} onClick={() => { setCurrentPage('villages'); setIsMapLoaded(false); setIsMenuOpen(false); }} label="🏠 ข้อมูลสมาชิก" icon={<Users size={20} />} />
+                    <MobileNavItem active={currentPage === 'prices'} onClick={() => { setCurrentPage('prices'); setIsMapLoaded(false); setIsMenuOpen(false); }} label="🪙 ราคารับซื้อ" icon={<Wallet size={20} />} />
+                    <MobileNavItem active={currentPage === 'map'} onClick={() => { setCurrentPage('map'); setIsMenuOpen(false); }} label="🗺️ แผนที่ครัวเรือน" icon={<MapIcon size={20} />} />
+
+                    {isLoggedIn && (
+                        <button onClick={() => { setCurrentPage('admin'); setIsMapLoaded(false); setIsMenuOpen(false); }} className="flex items-center gap-3 p-3 rounded-xl text-sm font-black mt-1 bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors">
+                            <LayoutDashboard size={20} /> <span>🛠️ จัดการระบบแอดมิน</span>
+                        </button>
+                    )}
+                </div>
 
                 {/* ── 📦 3. ส่วนเนื้อหา (แสดงกราฟ ตาราง สถิติ) ── */}
                 <div className="flex-grow p-4 md:p-8 max-w-[1600px] w-full mx-auto">
