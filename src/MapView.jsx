@@ -9,131 +9,157 @@ const MapView = ({ currentLocation, members, findMyLocation, onPinLocation, isLo
     const clusterGroupRef = useRef(null);
     const myMarkerRef = useRef(null);
     const [filterId, setFilterId] = useState('all');
-    const [isMapReady, setIsMapReady] = useState(false); // เพิ่มสถานะนี้เพื่อคุมการวาดหมุด
 
+    // กรองสมาชิกตามหมวดหมู่
     const displayedMembers = useMemo(() => {
+        if (!members) return [];
         if (filterId === 'all') return members;
-        return members.filter(m => String(m.villageId) === String(filterId));
+        return members.filter(m => String(m.villageId) === String(filterId) || String(m.category) === String(filterId));
     }, [members, filterId]);
 
-    // 1. Setup Map
+    // 1. Setup Map แบบเซฟ Memory (วาดครั้งเดียวตอนกดเปิด)
     useEffect(() => {
         const L = window.L;
-        if (!L || mapRef.current || currentLocation.lat === 0) return;
+        const mapContainer = document.getElementById('map-container');
 
+        if (!L || !mapContainer || mapRef.current) return;
+
+        // สร้างแผนที่ (ดึงพิกัด currentLocation จาก App.jsx มาใช้อัตโนมัติ)
         mapRef.current = L.map('map-container', {
-            maxBounds: [[17.5, 98.6], [18.8, 99.3]],
+            maxBounds: [[17.5, 98.6], [18.8, 99.3]], // ล็อกโซนลำพูน-เชียงใหม่
             maxBoundsViscosity: 1.0,
-            minZoom: 10
-        }).setView([currentLocation.lat, currentLocation.lng], 16);
+            minZoom: 12 // กันผู้ใช้ซูมออกไปดูทั้งโลก (ลดการโหลดรูปแผนที่)
+        }).setView([currentLocation?.lat || 18.653733, currentLocation?.lng || 99.038667], 16);
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19, keepBuffer: 2
+            maxZoom: 19,
+            attribution: '© OpenStreetMap',
+            keepBuffer: 2 // เก็บ Cache รูปไว้ในเครื่อง จะได้ไม่โหลดซ้ำ
         }).addTo(mapRef.current);
 
-        // ให้เวลาแมพโหลดขนาดเสร็จแล้วค่อยบอกว่าพร้อม
-        const timer = setTimeout(() => {
-            if (mapRef.current) {
-                mapRef.current.invalidateSize();
-                setIsMapReady(true);
-            }
-        }, 500);
+        // สร้างกลุ่มหมุด (Cluster) เพื่อลดภาระเครื่องเวลามีบ้านหลายร้อยหลัง
+        clusterGroupRef.current = L.markerClusterGroup({
+            chunkedLoading: true, // ทยอยโหลดหมุด ไม่โหลดตู้มเดียว
+            spiderfyOnMaxZoom: true
+        });
+        mapRef.current.addLayer(clusterGroupRef.current);
 
-        // โค้ดทำลายแผนที่จะทำงานแค่ตอน "ปิดหน้าต่าง/ย้ายหน้าเว็บ" เท่านั้น
+        // แก้อาการแผนที่เทา (โหลดไม่เต็มกรอบ)
+        setTimeout(() => {
+            if (mapRef.current) mapRef.current.invalidateSize();
+        }, 300);
+
+        // ทำลายแผนที่ทิ้งและคืน Memory ให้คอมพิวเตอร์ตอนกดปิด/เปลี่ยนหน้า
         return () => {
-            clearTimeout(timer);
             if (mapRef.current) {
                 mapRef.current.off();
                 mapRef.current.remove();
                 mapRef.current = null;
-                setIsMapReady(false);
+                clusterGroupRef.current = null;
+                myMarkerRef.current = null;
             }
         };
-    }, []); // 🌟 จุดสำคัญ: ต้องแก้กลับเป็นวงเล็บว่าง [] เท่านั้นครับ!
+    }, []); // ทำงานรอบเดียวตอนเปิดหน้าแผนที่
 
-    // 2. วาดหมุดสมาชิก (รอให้ isMapReady เป็น true)
+    // 2. วาดหมุดและอัปเดตเมื่อเปลี่ยนหมวด
     useEffect(() => {
-        if (!isMapReady || !mapRef.current || currentLocation.lat === 0) return;
+        if (!mapRef.current || !clusterGroupRef.current) return;
 
-        console.log("กำลังวาดหมุดสมาชิก จำนวน:", displayedMembers.length);
+        const L = window.L;
+        clusterGroupRef.current.clearLayers(); // ล้างหมุดเก่าออกก่อนวาดใหม่
 
-        if (!clusterGroupRef.current) {
-            clusterGroupRef.current = L.markerClusterGroup({ chunkedLoading: true });
-            mapRef.current.addLayer(clusterGroupRef.current);
-        }
-        clusterGroupRef.current.clearLayers();
+        const markers = displayedMembers
+            .filter(m => m.lat && m.lng)
+            .map(m => {
+                const formattedBalance = Number(m.balance || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+                const marker = L.marker([m.lat, m.lng]);
 
-        displayedMembers.filter(m => m.lat && m.lng).forEach(m => {
-            // แปลงตัวเลขให้มีลูกน้ำและทศนิยม 2 ตำแหน่ง
-            const formattedBalance = Number(m.balance || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                // ออกแบบหน้าต่าง Popup ให้สวยงามและอ่านง่ายขึ้น
+                marker.bindPopup(
+                    `<div class="text-center font-sans">
+                        <b class="text-blue-700 text-sm">🏠 บ้านเลขที่ ${m.houseNo}</b><br>
+                        <span class="text-xs text-slate-500">${m.category || 'ไม่ระบุหมวด'}</span><br>
+                        <div class="mt-2 bg-emerald-50 text-emerald-700 px-2 py-1 rounded-lg border border-emerald-200">
+                            <b>💰 ฿${formattedBalance}</b>
+                        </div>
+                    </div>`
+                );
+                return marker;
+            });
 
-            const marker = L.marker([m.lat, m.lng]).bindPopup(
-                `<b>🏠 บ้านเลขที่ ${m.houseNo}</b><br>
-                 หมวด: ${m.category || 'ไม่ระบุ'}<br>
-                 <b>💰 ยอดเงินคงเหลือ: ฿${formattedBalance}</b>`
-            );
-            clusterGroupRef.current.addLayer(marker);
-        })
-    }, [displayedMembers, isMapReady]);
+        clusterGroupRef.current.addLayers(markers);
+    }, [displayedMembers]);
 
-    // 3. ปักหมุดตัวเรา (รอให้ isMapReady เป็น true)
+    // 3. ปักหมุดตำแหน่งปัจจุบันของตัวเรา
     useEffect(() => {
-        // เพิ่มเช็คพิกัดจริง
-        if (!isMapReady || !mapRef.current || currentLocation.lat === 0) return;
+        if (!mapRef.current || !currentLocation || currentLocation.lat === 0) return;
 
         const L = window.L;
         const latLng = [currentLocation.lat, currentLocation.lng];
 
         if (!myMarkerRef.current) {
-            // สร้างครั้งแรก
             const myIcon = L.icon({
                 iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
-                iconSize: [25, 41], iconAnchor: [12, 41]
+                iconSize: [25, 41],
+                iconAnchor: [12, 41]
             });
-            myMarkerRef.current = L.marker(latLng, { icon: myIcon }).addTo(mapRef.current).bindPopup("<b>คุณอยู่ที่นี่</b>");
+            myMarkerRef.current = L.marker(latLng, { icon: myIcon, zIndexOffset: 1000 })
+                .addTo(mapRef.current)
+                .bindPopup("<b class='text-emerald-700'>📍 คุณอยู่ที่นี่</b>");
         } else {
-            // อัปเดตตำแหน่งหมุดตัวเราทุกครั้งที่ currentLocation เปลี่ยน
             myMarkerRef.current.setLatLng(latLng);
         }
-        mapRef.current.setView(latLng, 16);
-    }, [currentLocation, isMapReady]);
-
+    }, [currentLocation]);
 
     return (
-        <div className="flex flex-col gap-4">
-            <div className="relative h-[600px] w-full rounded-3xl overflow-hidden border-4 border-white shadow-xl">
-                <div id="map-container" className="h-full w-full z-0"></div>
-                <button
-                    onClick={(e) => {
-                        e.preventDefault();
-                        findMyLocation(); // ดึงพิกัดใหม่
-
-                        // อัปเดตตำแหน่งหมุดและเลื่อนแมพเฉพาะตอนที่กดปุ่มเท่านั้น
-                        if (myMarkerRef.current) {
-                            myMarkerRef.current.setLatLng([currentLocation.lat, currentLocation.lng]);
-                        }
-                        mapRef.current?.flyTo([currentLocation.lat, currentLocation.lng], 16, { animate: true });
-                    }}
-                    className="absolute top-6 right-6 z-[1000] bg-white p-4 rounded-2xl shadow-lg text-blue-600"
+        <div className="flex flex-col gap-4 animate-in zoom-in-95 duration-300">
+            {/* แถบตัวกรอง */}
+            <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col sm:flex-row gap-3 items-center">
+                <span className="font-bold text-slate-600 whitespace-nowrap"><MapPin size={18} className="inline mr-1 text-blue-500" /> ดูแผนที่สมาชิก:</span>
+                <select
+                    value={filterId}
+                    onChange={(e) => setFilterId(e.target.value)}
+                    className="w-full sm:flex-1 p-2.5 bg-slate-50 rounded-xl font-bold border border-slate-200 outline-none focus:border-blue-500 text-sm cursor-pointer"
                 >
-                    <Navigation size={24} />
-                </button>
-            </div>
-
-            <div className="bg-white p-4 rounded-2xl shadow-md border border-slate-200">
-                <label className="block text-sm font-bold text-slate-500 mb-2">เลือกหมวดหมู่เพื่อดูสมาชิก:</label>
-                <select onChange={(e) => setFilterId(e.target.value)} className="w-full p-3 bg-slate-50 rounded-xl font-bold border-2 border-slate-100 outline-none">
-                    <option value="all">🌐 แสดงทุกหมวดหมู่ (รวม {displayedMembers.length} หลัง)</option>
+                    <option value="all">🌐 แสดงทั้งหมด (รวม {members?.length || 0} หลัง)</option>
                     {villages?.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
                 </select>
             </div>
 
+            {/* แผนที่ */}
+            <div className="relative h-[500px] sm:h-[600px] w-full rounded-3xl overflow-hidden border border-slate-200 shadow-md">
+                <div id="map-container" className="h-full w-full z-0 bg-slate-100"></div>
+
+                {/* ปุ่มดึงพิกัด GPS กลับมาที่ตัวเรา */}
+                <button
+                    onClick={(e) => {
+                        e.preventDefault();
+                        if (typeof findMyLocation === 'function') findMyLocation();
+                        if (mapRef.current && currentLocation) {
+                            mapRef.current.flyTo([currentLocation.lat, currentLocation.lng], 17, { animate: true, duration: 1.5 });
+                        }
+                    }}
+                    className="absolute top-4 right-4 z-[1000] bg-white p-3.5 rounded-2xl shadow-lg text-blue-600 hover:bg-blue-50 hover:scale-105 transition-all border border-slate-100 group"
+                    title="เลื่อนมาตำแหน่งของฉัน"
+                >
+                    <Navigation size={22} className="group-hover:rotate-45 transition-transform duration-300" />
+                </button>
+            </div>
+
+            {/* ปุ่มลงทะเบียน (แสดงเฉพาะตอนล็อกอินเป็นแอดมิน) */}
             {isLoggedIn && (
-                <button onClick={(e) => { e.preventDefault(); onPinLocation(currentLocation); }} className="w-full bg-green-600 text-white p-4 rounded-2xl font-bold shadow-lg">
-                    <MapPin className="inline mr-2" /> ปักหมุดลงทะเบียนบ้านนี้
+                <button
+                    onClick={(e) => {
+                        e.preventDefault();
+                        if (typeof onPinLocation === 'function') onPinLocation(currentLocation);
+                    }}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-2xl font-black shadow-[0_4px_15px_rgba(37,99,235,0.3)] transition-all flex items-center justify-center gap-2"
+                >
+                    <MapPin size={20} /> ยืนยันพิกัด และลงทะเบียนบ้านใหม่ที่นี่
                 </button>
             )}
         </div>
     );
 };
+
 export default MapView;

@@ -901,8 +901,8 @@ const EditMemberModal = ({ member, villageData, onSave, onDelete, onClose, globa
         if (!L || !container) return;
         if (container._leaflet_id) { container._leaflet_id = null; }
 
-        const initLat = editData.lat || 18.5244;
-        const initLng = editData.lng || 99.0435;
+        const initLat = editData.lat || 18.653733;
+        const initLng = editData.lng || 99.038667;
 
         const editMiniMap = L.map('edit-map-container').setView([initLat, initLng], 17);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(editMiniMap);
@@ -4243,8 +4243,8 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
                     houseNo: houseNo,
                     villageId: vMatch ? Number(vMatch[0]) : 1,
                     category: category,
-                    lat: 18.5244 + (Math.random() - 0.5) * 0.002,
-                    lng: 99.0435 + (Math.random() - 0.5) * 0.002,
+                    lat: 18.653733 + (Math.random() - 0.5) * 0.003,
+                    lng: 99.038667 + (Math.random() - 0.5) * 0.003,
                     familyMembers: [], wasteData: {}, balance: 0, credit: 0, isSorted: false
                 };
             }
@@ -5014,41 +5014,65 @@ const App = () => {
     const [selectedPeriod, setSelectedPeriod] = useState({ month: 'current', year: 'current' });
     const [historicalSummary, setHistoricalSummary] = useState(null);
     const [summaryCache, setSummaryCache] = useState({});
-    const [prevMonthWaste, setPrevMonthWaste] = useState(null);
 
 
-    useEffect(() => {
-        const fetchPrevMonthWaste = async () => {
-            const now = new Date();
-            const ThaiMonths = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
-
-            let prevMonthIdx = now.getMonth() - 1;
-            let prevYear = now.getFullYear() + 543;
-
-            if (prevMonthIdx < 0) {
-                prevMonthIdx = 11;
-                prevYear -= 1;
-            }
-
-            try {
-                const docId = `${prevYear}_${ThaiMonths[prevMonthIdx]}`;
-                const docSnap = await getDoc(doc(db, "monthly_summaries", docId));
-                if (docSnap.exists()) {
-                    setPrevMonthWaste(docSnap.data().totalWaste || 0);
-                } else {
-                    setPrevMonthWaste(0);
-                }
-            } catch (error) {
-                setPrevMonthWaste(0);
-            }
-        };
-        fetchPrevMonthWaste();
-    }, []);
     // ข้อมูลสมาชิกและตำแหน่ง
     const [members, setMembers] = useState([]);
     const [allMembers, setAllMembers] = useState([]);
-    const [currentLocation, setCurrentLocation] = useState({ lat: 18.5244, lng: 99.0435 }); // จุดกึ่งกลางแผนที่ (อุโมงค์)
+    const [currentLocation, setCurrentLocation] = useState({ lat: 18.653733, lng: 99.038667 }); // จุดกึ่งกลางแผนที่ (อุโมงค์)
     // ข้อมูลแอดมินที่ล็อกอินอยู่
+    const [currentMonthWaste, setCurrentMonthWaste] = useState(0);
+    const [prevMonthWaste, setPrevMonthWaste] = useState(0);
+    const [wasteDiffPercent, setWasteDiffPercent] = useState(0);
+    const [footerMonthLabel, setFooterMonthLabel] = useState('กำลังโหลด...');
+    const [wasteDiffKg, setWasteDiffKg] = useState(0);
+
+    useEffect(() => {
+        const fetchTrendData = async () => {
+            try {
+                const snap = await getDocs(collection(db, "monthly_summaries"));
+                if (snap.empty) {
+                    setFooterMonthLabel('ยังไม่มีข้อมูล');
+                    return;
+                }
+
+                const ThaiMonths = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+
+                const summaries = snap.docs.map(doc => {
+                    const parts = doc.id.split('_');
+                    const year = parseInt(parts[0]);
+                    const monthIdx = ThaiMonths.indexOf(parts[1]);
+                    const sortKey = (year * 100) + monthIdx;
+                    return { id: doc.id, year, monthName: parts[1], sortKey, data: doc.data() };
+                });
+
+                summaries.sort((a, b) => b.sortKey - a.sortKey);
+
+                const latest = summaries[0];
+                const currentWaste = Number(latest.data.totalWaste) || 0;
+                setCurrentMonthWaste(currentWaste);
+                setFooterMonthLabel(`${latest.monthName} ${latest.year}`);
+
+                let prevWaste = 0;
+                if (summaries.length > 1) {
+                    prevWaste = Number(summaries[1].data.totalWaste) || 0;
+                }
+                setPrevMonthWaste(prevWaste);
+                const diff = currentWaste - prevWaste;
+                setWasteDiffKg(diff);
+
+                if (prevWaste > 0) {
+                    setWasteDiffPercent(((currentWaste - prevWaste) / prevWaste) * 100);
+                } else {
+                    setWasteDiffPercent(currentWaste > 0 ? 100 : 0);
+                }
+
+            } catch (error) {
+                console.error("ดึงข้อมูล Footer ล้มเหลว:", error);
+            }
+        };
+        fetchTrendData();
+    }, [db]);
 
     // ข้อมูลสำหรับการแก้ไขและแจ้งเตือน
     const [selectedVillage, setSelectedVillage] = useState(null);
@@ -5292,6 +5316,21 @@ const App = () => {
 
         return totalCarbon;
     }, [allMembers]);
+    // แปลงหน่วยน้ำหนักขยะ (กก. -> ตัน)
+    const formatWeightAuto = (kg) => {
+        if (kg >= 1000) {
+            return { value: (kg / 1000).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), unit: 'ตัน' };
+        }
+        return { value: Math.floor(kg).toLocaleString(), unit: 'กก.' };
+    };
+
+    // แปลงหน่วยคาร์บอน (kgCO2e -> tCO2e)
+    const formatCarbonAuto = (kg) => {
+        if (kg >= 1000) {
+            return { value: (kg / 1000).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), unit: 'tCO₂e' };
+        }
+        return { value: Math.floor(kg).toLocaleString(), unit: 'kgCO₂e' };
+    };
 
     // --- 5. สรุปสถิติ 5 กล่องหลักสำหรับหน้า Dashboard ---
     const stats = useMemo(() => {
@@ -5339,8 +5378,13 @@ const App = () => {
                 icon: <Database size={28} className="text-yellow-500" />
             },
             {
-                label: 'ขยะรวมเดือนล่าสุด',
-                value: `${totalWeight.toLocaleString(undefined, { maximumFractionDigits: 2 })} กก.`,
+                label: 'ขยะรวมทั้งหมด',
+                value: (
+                    <div className="flex items-baseline gap-1.5">
+                        {formatWeightAuto(totalWeight).value}
+                        <span className="text-sm font-bold text-slate-400">{formatWeightAuto(totalWeight).unit}</span>
+                    </div>
+                ),
                 icon: <TrendingUp size={28} className="text-yellow-500" />
             },
             {
@@ -5355,15 +5399,12 @@ const App = () => {
                 icon: <Users size={28} className="text-yellow-500" />
             },
             {
-                label: 'ลดการปล่อยคาร์บอน', // ย้ายหน่วยมาไว้ที่ Label แทน
+                label: 'ลดการปล่อยคาร์บอน',
                 value: (
-                    <>
-                        {Number(carbonStats || 0).toLocaleString(undefined, {
-                            minimumFractionDigits: 1,
-                            maximumFractionDigits: 1
-                        })}
-                        <span className="text-xs font-bold text-slate-400 ml-1">kgCO₂e</span>
-                    </>
+                    <div className="flex items-baseline gap-1.5">
+                        {formatCarbonAuto(carbonStats || 0).value}
+                        <span className="text-xs font-bold text-slate-400">{formatCarbonAuto(carbonStats || 0).unit}</span>
+                    </div>
                 ),
                 icon: <Leaf size={28} className="text-emerald-500" />,
                 hasTooltip: true
@@ -5482,24 +5523,15 @@ const App = () => {
         }
         setIsLoadingData(false);
     };
-    // 🌟 2. คำนวณน้ำหนักขยะรวม Real-time ของเดือนนี้จาก RAM (เอาไว้ก่อน renderContent)
-    const currentMonthWaste = allMembers.reduce((sum, m) => {
-        return sum + Object.values(m.wasteData || {}).reduce((a, b) => a + (Number(b) || 0), 0);
-    }, 0);
 
-    const wasteDiffPercent = prevMonthWaste && prevMonthWaste > 0
-        ? ((currentMonthWaste - prevMonthWaste) / prevMonthWaste) * 100
-        : 0;
-    //* --- renderContent: ฟังก์ชันสำหรับตัดสินใจว่าจะแสดงหน้าจอไหน-- -
-    //* ทำหน้าที่เหมือนสวิตช์ไฟ(Switch Case) ตามค่าของตัวแปร currentPage
     const renderContent = () => {
         switch (currentPage) {
             case 'dashboard': {
-                // 🌟 1. เช็กว่าตอนนี้แอดมินกำลังดูเดือนเก่าอยู่ใช่ไหม? (ถ้า month ไม่ใช่ 'current' แปลว่าดูย้อนหลัง)
+                //  1. เช็กว่าตอนนี้แอดมินกำลังดูเดือนเก่าอยู่ใช่ไหม? (ถ้า month ไม่ใช่ 'current' แปลว่าดูย้อนหลัง)
                 const isHistorical = selectedPeriod.month !== 'current';
                 const histData = historicalSummary || {}; // ดัก Error เผื่อไม่มีข้อมูลเดือนนั้น
 
-                // 🌟 2. สับรางกล่องสถิติ 5 กล่องด้านบน
+                //  2. สับรางกล่องสถิติ 5 กล่องด้านบน
                 const displayStats = isHistorical ? [
                     { label: 'ประเภทขยะมากที่สุด', value: histData.topWasteType || '-', icon: <Database size={28} className="text-yellow-500" /> },
                     { label: 'ขยะรวมเดือนที่เลือก', value: `${(histData.totalWaste || 0).toLocaleString()} กก.`, icon: <TrendingUp size={28} className="text-yellow-500" /> },
@@ -5508,20 +5540,20 @@ const App = () => {
                     { label: 'ลดการปล่อยคาร์บอน', value: <>{Number(histData.totalCarbon || 0).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}<span className="text-xs font-bold text-slate-400 ml-1">kgCO₂e</span></>, icon: <Leaf size={28} className="text-emerald-500" />, hasTooltip: true }
                 ] : stats;
 
-                // 🌟 3. สับรางข้อมูลตารางอันดับหมวด
+                //  3. สับรางข้อมูลตารางอันดับหมวด
                 const displayVillageData = isHistorical ? (histData.villageData || []) : villageData;
 
-                // 🌟 4. สับรางข้อมูลกราฟแท่งแยกประเภทขยะ
+                //  4. สับรางข้อมูลกราฟแท่งแยกประเภทขยะ
                 const displayWasteTypeData = isHistorical
                     ? Object.entries(histData.wasteData || {}).map(([name, amount]) => ({ name, amount }))
                     : wasteTypeData;
 
-                // 🌟 5. ส่งตัวแปรที่ผ่านการสับรางแล้วออกไปโชว์ที่หน้าจอ
+                //  5. ส่งตัวแปรที่ผ่านการสับรางแล้วออกไปโชว์ที่หน้าจอ
                 return (
                     <MemoizedDashboardView
-                        stats={displayStats}            // 👈 เปลี่ยนจาก stats เป็น displayStats
-                        villageData={displayVillageData}  // 👈 เปลี่ยนจาก villageData เป็น displayVillageData
-                        wasteTypeData={displayWasteTypeData} // 👈 เปลี่ยนจาก wasteTypeData เป็น displayWasteTypeData
+                        stats={displayStats}
+                        villageData={displayVillageData}
+                        wasteTypeData={displayWasteTypeData}
                         members={allMembers}
                         setCurrentPage={setCurrentPage}
                         selectedPeriod={selectedPeriod}
@@ -5529,7 +5561,7 @@ const App = () => {
                         historicalSummary={historicalSummary}
                     />
                 );
-            } // 👈 สิ้นสุดเคส dashboard ตรงปีกกานี้
+            }
             case 'villages':
                 return <VillagesView villageData={villageData} members={allMembers} setSelectedVillage={setSelectedVillage} setCurrentPage={setCurrentPage} isLoggedIn={isLoggedIn} setEditingVillage={setEditingVillage} />;
 
@@ -5729,17 +5761,17 @@ const App = () => {
 
                     {/* ข้อมูลแอดมิน (โชว์เฉพาะตอนล็อกอิน) */}
                     {isLoggedIn && currentUser && (
-                        <div className="bg-white/10 border border-white/20 p-4 rounded-2xl flex items-center gap-3 mb-4 backdrop-blur-md hover:bg-white/20 transition-all shadow-[0_4px_12px_rgba(0,0,0,0.05)] cursor-default">
-                            {/* รูปโปรไฟล์จำลอง (ค้นหาตัวเลขในชื่อมาโชว์ ถ้าไม่มีให้ดึงอักษรตัวแรก) */}
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-amber-300 to-orange-400 flex items-center justify-center text-emerald-900 font-black text-lg shrink-0 shadow-inner">
+                        <div className="bg-white/10 border border-white/20 p-2.5 rounded-xl flex items-center gap-2.5 mb-2 backdrop-blur-md hover:bg-white/20 transition-all shadow-sm cursor-default">
+                            {/* รูปโปรไฟล์ (ลดขนาดจาก w-10 h-10 เป็น w-8 h-8) */}
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-amber-300 to-orange-400 flex items-center justify-center text-emerald-900 font-black text-base shrink-0 shadow-inner">
                                 {currentUser.name
                                     ? (currentUser.name.match(/\d+/) ? currentUser.name.match(/\d+/)[0] : currentUser.name.charAt(0))
                                     : '👤'
                                 }
                             </div>
                             <div className="flex flex-col overflow-hidden w-full">
-                                <span className="text-[10px] text-emerald-100 font-bold uppercase tracking-widest opacity-80">ผู้ดูแลระบบ</span>
-                                <span className="font-black text-white text-sm truncate drop-shadow-sm mt-0.5">
+                                <span className="text-[9px] text-emerald-100 font-bold uppercase tracking-widest opacity-80">ผู้ดูแลระบบ</span>
+                                <span className="font-bold text-white text-xs truncate drop-shadow-sm leading-tight mt-0.5">
                                     {currentUser.name}
                                 </span>
                             </div>
@@ -5747,12 +5779,12 @@ const App = () => {
                     )}
 
                     {/* ข้อมูลเวอร์ชั่น (โชว์ให้ทุกคนเห็น ไม่ว่าจะล็อกอินหรือไม่) */}
-                    <div className="flex flex-col items-center text-center text-emerald-100/60 border-t border-emerald-500/50 pt-4">
-                        <span className="text-[10px] font-bold tracking-widest uppercase">Smart City Waste Management</span>
-                        <div className="flex items-center gap-1.5 mt-1.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400/50"></span>
-                            <span className="text-[15px] font-medium tracking-wide">Version 1.1.5</span>
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400/50"></span>
+                    <div className="flex flex-col items-center text-center text-emerald-100/60 border-t border-emerald-500/50 pt-2.5 pb-1">
+                        <span className="text-[9px] font-bold tracking-widest uppercase">Smart City Waste Management</span>
+                        <div className="flex items-center gap-1 mt-1">
+                            <span className="w-1 h-1 rounded-full bg-emerald-400/50"></span>
+                            <span className="text-[11px] font-medium tracking-wide">Version 1.1.5</span>
+                            <span className="w-1 h-1 rounded-full bg-emerald-400/50"></span>
                         </div>
                     </div>
                 </div>
@@ -5887,7 +5919,7 @@ const App = () => {
                     )}
                 </div>
 
-                {/* ── 📦 3. ส่วนเนื้อหา (แสดงกราฟ ตาราง สถิติ) ── */}
+                {/* ──  3. ส่วนเนื้อหา (แสดงกราฟ ตาราง สถิติ) ── */}
                 <div className="flex-grow p-4 md:p-8 max-w-[1600px] w-full mx-auto">
                     {renderContent()}
                 </div>
@@ -5897,15 +5929,19 @@ const App = () => {
                     <div className="max-w-7xl mx-auto px-4 text-center text-slate-500 text-sm">
                         <div className="flex flex-wrap justify-center items-center gap-6 mb-4">
 
-                            {/* ส่วนเปรียบเทียบยอดขยะ (คำนวณเปรียบเทียบอัตโนมัติ) */}
+                            {/* ส่วนเปรียบเทียบยอดขยะ (ดึงบิล 2 เดือนล่าสุดมาเทียบกันอัตโนมัติ) */}
                             <div className="flex items-center gap-2">
-                                <span className="font-bold text-slate-400">แนวโน้มขยะเดือนนี้:</span>
-                                <span className={`font-mono px-3 py-1.5 rounded-lg font-black shadow-sm flex items-center gap-1 ${wasteDiffPercent >= 0
-                                    ? 'bg-rose-50 text-rose-600 border border-rose-100' // ขยะเพิ่มขึ้น (ใช้สีแดงเตือน)
-                                    : 'bg-emerald-50 text-emerald-600 border border-emerald-100' // ขยะลดลง (ใช้สีเขียวชมเชย)
+                                <span className="font-bold text-slate-400">แนวโน้มล่าสุด ({footerMonthLabel}):</span>
+                                <span className={`font-mono px-3 py-1.5 rounded-lg font-black shadow-sm flex items-center gap-2 ${wasteDiffPercent >= 0
+                                    ? 'bg-emerald-50 text-emerald-600 border border-emerald-100'
+                                    : 'bg-rose-50 text-rose-600 border border-rose-100'
                                     }`}>
                                     {currentMonthWaste.toLocaleString(undefined, { maximumFractionDigits: 1 })} กก.
-                                    ({wasteDiffPercent >= 0 ? `↑` : `↓`} {Math.abs(wasteDiffPercent).toFixed(1)}%)
+
+                                    {/*  แสดงส่วนต่างน้ำหนักตรงนี้เพิ่มเข้าไปครับ */}
+                                    <span className="text-xs opacity-80 border-l border-current pl-2">
+                                        ({wasteDiffPercent >= 0 ? `+` : ``}{wasteDiffKg.toFixed(1)} กก. | {wasteDiffPercent >= 0 ? `↑` : `↓`} {Math.abs(wasteDiffPercent).toFixed(1)}%)
+                                    </span>
                                 </span>
                             </div>
 
@@ -5924,7 +5960,7 @@ const App = () => {
 
             </main>
 
-            {/* ── 🚨 4. แจ้งเตือนและป๊อปอัพ (Modals) ── */}
+            {/* ──  4. แจ้งเตือนและป๊อปอัพ (Modals) ── */}
             {showValidationAlert && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4 backdrop-blur-sm">
                     <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl border text-slate-700 animate-in zoom-in">
