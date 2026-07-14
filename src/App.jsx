@@ -249,7 +249,9 @@ const DashboardView = ({ stats, villageData, wasteTypeData, members, setCurrentP
                                 {/* 🌟 ขยายขนาดฟอนต์หัวข้อ */}
                                 <p className="text-sm font-bold text-slate-500 mb-1.5">{stat.label}</p>
                                 {/* 🌟 ขยายขนาดฟอนต์ตัวเลขให้ใหญ่ขึ้นเป็น 2xl ถึง 3xl */}
-                                <p className="text-xl sm:text-xl font-black text-slate-800 tracking-tight leading-none">{stat.value}</p>
+                                <div className="text-xl sm:text-xl font-black text-slate-800 tracking-tight leading-none">
+                                    {stat.value}
+                                </div>
                             </div>
                         </div>
                     ))
@@ -1286,14 +1288,56 @@ const MembersView = ({ members, setMembers, villages, setVillages, isLoggedIn, l
             await setDoc(doc(db, "members", String(updatedMember.id)), updatedMember, { merge: true });
             setMembers(members.map(m => m.id === updatedMember.id ? updatedMember : m));
 
-            // 🌟 เพิ่มคำสั่งบันทึกประวัติ (Log) ตรงนี้!
-            if (typeof logAdminAction === 'function') {
-                // เช็กว่ามีการเปลี่ยนยอดเงินรวมของบ้านหรือไม่
-                const oldBal = oldMember ? Number(oldMember.balance) || 0 : 0;
-                const newBal = Number(updatedMember.balance) || 0;
+            // บันทึกกรณีแอดมินลบขยะ หรือแก้เงินย้อนหลัง
+            const oldBal = oldMember ? (Number(oldMember.balance) || 0) : 0;
+            const newBal = Number(updatedMember.balance) || 0;
+            const balDiff = newBal - oldBal;
 
-                if (oldBal !== newBal) {
-                    logAdminAction(`แก้ไขยอดเงิน บ้านเลขที่ ${updatedMember.houseNo} (จากเดิม ฿${oldBal.toLocaleString()} เปลี่ยนเป็น ฿${newBal.toLocaleString()})`);
+            const oldCredit = oldMember ? (Number(oldMember.credit) || 0) : 0;
+            const newCredit = Number(updatedMember.credit) || 0;
+            const creditDiff = newCredit - oldCredit;
+
+            //  "ส่วนต่างของน้ำหนักขยะแต่ละประเภท"
+            const wasteDiffs = {};
+            const allWasteKeys = new Set([
+                ...Object.keys(oldMember?.wasteData || {}),
+                ...Object.keys(updatedMember.wasteData || {})
+            ]);
+
+            allWasteKeys.forEach(key => {
+                const oldW = Number(oldMember?.wasteData?.[key]) || 0;
+                const newW = Number(updatedMember.wasteData?.[key]) || 0;
+                const wDiff = newW - oldW;
+                if (wDiff !== 0) {
+                    wasteDiffs[key] = wDiff; // บันทึกน้ำหนักที่เปลี่ยนไป (ถ้าลบขยะ จะเป็นเลขติดลบ)
+                }
+            });
+
+            const hasWasteChanges = Object.keys(wasteDiffs).length > 0;
+
+            //  ถ้ามีอะไรเปลี่ยนไปเลยแม้แต่นิดเดียว (เงิน หรือ ขยะ) ให้สร้างบิล
+            if (balDiff !== 0 || creditDiff !== 0 || hasWasteChanges) {
+                const now = new Date();
+                const ThaiMonths = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+                await addDoc(collection(db, "waste_transactions"), {
+                    houseNo: updatedMember.houseNo,
+                    personName: "อัปเดตประวัติหลังบ้าน",
+                    villageId: updatedMember.villageId,
+                    category: updatedMember.category,
+                    wasteData: wasteDiffs, // ส่วนต่างขยะห้เครื่องคิดเลขรายเดือน
+                    creditAdded: Number(creditDiff.toFixed(4)),
+                    addedBalance: balDiff,
+                    date: `${now.getDate()} ${ThaiMonths[now.getMonth()]} ${now.getFullYear() + 543}`,
+                    time: `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')} น.`,
+                    operator: 'แก้ไขทะเบียนสมาชิก',
+                    timestamp: serverTimestamp()
+                });
+            }
+
+            // บันทึก Log แอดมิน
+            if (typeof logAdminAction === 'function') {
+                if (balDiff !== 0 || hasWasteChanges) {
+                    logAdminAction(`แก้ไขตัวเลขขยะ/ยอดเงิน บ้านเลขที่ ${updatedMember.houseNo} (เงินเดิม ฿${oldBal.toLocaleString()} ➔ ฿${newBal.toLocaleString()})`);
                 } else {
                     logAdminAction(`แก้ไขข้อมูลทั่วไป ครัวเรือนบ้านเลขที่ ${updatedMember.houseNo}`);
                 }
@@ -1977,10 +2021,35 @@ const ManageBalanceView = ({ members, villages, setMembers, db, logAdminAction, 
 
             // 4. ยิงขึ้น Cloud
             await setDoc(doc(db, "members", String(houseMember.id)), updatedMember, { merge: true });
-
-            // 🌟 5. แจ้งเตือน Log แอดมิน (ใส่รายละเอียด ยอดเดิม -> ยอดใหม่)
+            // สร้างใบเสร็จส่วนต่าง (กรณีมีการเพิ่ม/ลดเงิน)
+            const balanceDiff = newBalance - oldBalance;
+            if (balanceDiff !== 0) {
+                const now = new Date();
+                const ThaiMonths = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+                await addDoc(collection(db, "waste_transactions"), {
+                    houseNo: houseMember.houseNo,
+                    personName: pName,
+                    villageId: houseMember.villageId,
+                    category: houseMember.category,
+                    wasteData: {},
+                    creditAdded: 0,
+                    addedBalance: balanceDiff,
+                    date: `${now.getDate()} ${ThaiMonths[now.getMonth()]} ${now.getFullYear() + 543}`,
+                    time: `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')} น.`,
+                    operator: 'ปรับปรุงยอดเงินรายบุคคล',
+                    timestamp: serverTimestamp()
+                });
+            }
+            // 5. แจ้งเตือน Log แอดมิน
             if (typeof logAdminAction === 'function') {
                 logAdminAction(`แก้ไขยอดเงินของ "${pName}" (บ้านเลขที่ ${houseMember.houseNo}) จากเดิม ฿${oldBalance.toLocaleString()} เปลี่ยนเป็น ฿${newBalance.toLocaleString()}`);
+            }
+
+            // 6. อัปเดต State หน้าจอทันที (Local State Update)
+            const nextMembers = members.map(m => String(m.id) === String(houseMember.id) ? updatedMember : m);
+            if (typeof setMembers === 'function') {
+                setMembers(nextMembers);
+                localStorage.setItem('local_members_data', JSON.stringify(nextMembers));
             }
 
             setEditingPersonId(null);
@@ -1990,31 +2059,53 @@ const ManageBalanceView = ({ members, villages, setMembers, db, logAdminAction, 
             alert("❌ เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่");
         }
     };
-    //  ฟังก์ชันจัดการการหักเงินแบบกลุ่ม (Bulk Deduct - ระดับบุคคล)
+    //  ฟังก์ชันจัดการการหักเงินแบบกลุ่ม 
     const handleBulkSave = async (checkedPersonKeys, deductAmount, villageId) => {
         if (!confirm(`⚠️ ยืนยันการหักเงิน ฿${deductAmount} จากบุคคลที่เลือกจำนวน ${checkedPersonKeys.length} คน?`)) return;
 
         try {
-            // 1. จัดกลุ่มคีย์ตาม "บ้านเลขที่" (memberId) ก่อน เพื่อลดการเขียน DB ซ้ำซ้อน
+            let nextMembers = [...members];
             const houseUpdates = {};
+
+            // 🌟 กล่องเตรียมเก็บใบเสร็จการหักเงิน
+            const txPromises = [];
+            const now = new Date();
+            const ThaiMonths = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+            const dateStr = `${now.getDate()} ${ThaiMonths[now.getMonth()]} ${now.getFullYear() + 543}`;
+            const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')} น.`;
+
             checkedPersonKeys.forEach(key => {
                 const [mId, pId] = key.split('|');
                 if (!houseUpdates[mId]) houseUpdates[mId] = [];
                 houseUpdates[mId].push(pId);
             });
 
-            // 2. วนลูปอัปเดตไปทีละบ้าน
             for (const [mId, personIdsToDeduct] of Object.entries(houseUpdates)) {
-                const targetMem = members.find(m => String(m.id) === String(mId));
+                const targetMem = nextMembers.find(m => String(m.id) === String(mId));
                 if (targetMem) {
-
-                    //  วนลูปหักเงินรายคนภายในบ้าน
                     const updatedFamily = (targetMem.familyMembers || []).map((p, idx) => {
                         const pId = p.id || String(idx);
                         if (personIdsToDeduct.includes(String(pId))) {
-                            // ดักจับข้อมูลเก่า
                             const pBalance = typeof p === 'string' ? 0 : (Number(p.balance) || 0);
                             const newBalance = Math.max(0, pBalance - deductAmount);
+
+                            // 🌟 คำนวณยอดที่ถูกหักจริง (ติดลบ) เพื่อสร้างบิล
+                            const actualDeducted = newBalance - pBalance;
+                            if (actualDeducted !== 0) {
+                                txPromises.push(addDoc(collection(db, "waste_transactions"), {
+                                    houseNo: targetMem.houseNo,
+                                    personName: typeof p === 'string' ? p : (p.name || 'ไม่ระบุ'),
+                                    villageId: targetMem.villageId,
+                                    category: targetMem.category,
+                                    wasteData: {},
+                                    creditAdded: 0,
+                                    addedBalance: actualDeducted, // ยอดติดลบ
+                                    date: dateStr,
+                                    time: timeStr,
+                                    operator: 'หักเงินกลุ่ม (ถอนเงิน)',
+                                    timestamp: serverTimestamp()
+                                }));
+                            }
 
                             if (typeof p === 'string') {
                                 return { id: pId, name: p, balance: newBalance, credit: 0, wasteData: {}, hasWelfare: false, isSorted: false };
@@ -2024,15 +2115,24 @@ const ManageBalanceView = ({ members, villages, setMembers, db, logAdminAction, 
                         return p;
                     });
 
-                    // คำนวณยอดเงินรวมของบ้านใหม่
                     const newHouseBalance = updatedFamily.reduce((sum, p) => sum + (Number(p.balance) || 0), 0);
+                    const updatedMemberObj = { ...targetMem, familyMembers: updatedFamily, balance: newHouseBalance };
 
-                    // อัปเดตขึ้น Firebase แบบรายบ้าน
-                    await setDoc(doc(db, "members", String(mId)), { ...targetMem, familyMembers: updatedFamily, balance: newHouseBalance }, { merge: true });
+                    await setDoc(doc(db, "members", String(mId)), updatedMemberObj, { merge: true });
+                    nextMembers = nextMembers.map(m => String(m.id) === String(mId) ? updatedMemberObj : m);
                 }
             }
 
-            // 3. บันทึกประวัติการทำงานแอดมิน
+            // 🌟 ยิงใบเสร็จหักเงินทั้งหมดลงสระน้ำพร้อมกัน
+            if (txPromises.length > 0) {
+                await Promise.all(txPromises);
+            }
+
+            if (typeof setMembers === 'function') {
+                setMembers(nextMembers);
+                localStorage.setItem('local_members_data', JSON.stringify(nextMembers));
+            }
+
             const targetVillage = villages.find(v => Number(v.id) === Number(villageId));
             if (typeof logAdminAction === 'function') {
                 logAdminAction(`หักยอดเงินแบบกลุ่ม หมวด: ${targetVillage ? targetVillage.name : 'ไม่ระบุ'} จำนวน ${checkedPersonKeys.length} คน (หักคนละ ฿${deductAmount.toLocaleString()})`);
@@ -2898,12 +2998,177 @@ const LoginView = ({ setIsLoggedIn, staffs, setCurrentUser, logAdminAction }) =>
         </div>
     );
 };
+
+// =========================================================================
+// 📅 หน้าต่างประมวลผลและปิดยอดรายเดือน (Monthly Settlement Modal)
+// =========================================================================
+const MonthlySettlementModal = ({ db, villages, onClose, logAdminAction }) => {
+    const ThaiMonthsFull = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+    const ThaiMonthsShort = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+    const now = new Date();
+
+    const [selectedMonth, setSelectedMonth] = useState(ThaiMonthsFull[now.getMonth()]);
+    const [selectedYear, setSelectedYear] = useState(String(now.getFullYear() + 543));
+
+    const [previewData, setPreviewData] = useState(null);
+    const [isLoading, setIsLoading] = useState(false);
+
+    // 1. ฟังก์ชันดึงใบเสร็จมาพรีวิวคำนวณ
+    const handlePreview = async () => {
+        setIsLoading(true);
+        try {
+            // ดึงใบเสร็จทั้งหมดมาเพื่อกรองหาวันที่ (เนื่องจากใน DB เราเซฟวันที่เป็น String)
+            const txSnap = await getDocs(collection(db, "waste_transactions"));
+            const allTx = txSnap.docs.map(doc => doc.data());
+
+            // หาชื่อเดือนแบบย่อและเต็ม เพื่อให้ครอบคลุมทั้งบิลคีย์มือและบิล Excel
+            const monthIdx = ThaiMonthsFull.indexOf(selectedMonth);
+            const shortMonth = ThaiMonthsShort[monthIdx];
+
+            const targetTx = allTx.filter(tx => {
+                if (!tx.date) return false;
+                const matchYear = tx.date.includes(selectedYear);
+                const matchMonth = tx.date.includes(selectedMonth) || tx.date.includes(shortMonth);
+                return matchYear && matchMonth;
+            });
+
+            if (targetTx.length === 0) {
+                alert(`❌ ไม่พบประวัติการฝากขยะในเดือน ${selectedMonth} ${selectedYear}`);
+                setPreviewData(null);
+                setIsLoading(false);
+                return;
+            }
+
+            // คำนวณสรุปยอด
+            let totalWaste = 0;
+            let totalMoney = 0;
+            let totalCarbon = 0;
+            const wasteAgg = {};
+            const villageAgg = {};
+            const uniqueHouses = new Set();
+            const uniquePersons = new Set();
+
+            targetTx.forEach(tx => {
+                totalMoney += (Number(tx.addedBalance) || 0);
+                totalCarbon += (Number(tx.creditAdded) || 0);
+                uniqueHouses.add(tx.houseNo);
+                uniquePersons.add(`${tx.houseNo}_${tx.personName}`);
+
+                const cat = tx.category || 'ทั่วไป';
+                if (!villageAgg[cat]) villageAgg[cat] = { id: cat, name: cat, realBalance: 0 };
+                villageAgg[cat].realBalance += (Number(tx.addedBalance) || 0);
+
+                Object.entries(tx.wasteData || {}).forEach(([wType, wWeight]) => {
+                    const w = Number(wWeight) || 0;
+                    if (w > 0) {
+                        wasteAgg[wType] = (wasteAgg[wType] || 0) + w;
+                        totalWaste += w;
+                    }
+                });
+            });
+
+            setPreviewData({
+                topWasteType: Object.entries(wasteAgg).sort((a, b) => b[1] - a[1])[0]?.[0] || '-',
+                totalWaste: totalWaste,
+                totalBalance: totalMoney,
+                totalHouses: uniqueHouses.size,
+                totalPersons: uniquePersons.size,
+                totalCarbon: totalCarbon,
+                sortedPersons: uniquePersons.size, // สมมติว่าคนที่มาฝากคือคนที่คัดแยกแล้ว
+                unsortedPersons: 0,
+                wasteData: wasteAgg,
+                villageData: Object.values(villageAgg),
+                txCount: targetTx.length
+            });
+
+        } catch (error) {
+            console.error("Preview Error:", error);
+            alert("❌ ดึงข้อมูลล้มเหลว");
+        }
+        setIsLoading(false);
+    };
+
+    // 2. ฟังก์ชันยืนยันการบันทึกลง monthly_summaries
+    const handleConfirmSettlement = async () => {
+        if (!previewData) return;
+        setIsLoading(true);
+        try {
+            const docId = `${selectedYear}_${selectedMonth}`;
+            await setDoc(doc(db, "monthly_summaries", docId), previewData);
+
+            if (typeof logAdminAction === 'function') {
+                logAdminAction(`ปิดยอดและสรุปข้อมูลเดือน ${selectedMonth} ${selectedYear} (รวม ${previewData.txCount} รายการ)`);
+            }
+
+            alert(`🎉 ปิดยอดเดือน ${selectedMonth} ${selectedYear} สำเร็จ! สามารถดูได้ที่หน้าแรก`);
+            onClose();
+        } catch (error) {
+            console.error("Settlement Error:", error);
+            alert("❌ ไม่สามารถบันทึกการปิดยอดได้");
+        }
+        setIsLoading(false);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in">
+            <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+                <div className="bg-pink-600 rounded-t-3xl p-6 text-white text-center relative">
+                    <h3 className="text-2xl font-black flex items-center justify-center gap-2">
+                        <ClipboardList size={28} /> ปิดยอดและสรุปรายเดือน
+                    </h3>
+                    <p className="text-pink-100 text-sm mt-1">รวบรวมใบเสร็จทั้งหมดในเดือนเพื่อสร้างรายงาน</p>
+                    <button onClick={onClose} className="absolute top-4 right-4 p-2 bg-white/20 hover:bg-white/30 rounded-full transition"><X size={20} /></button>
+                </div>
+
+                <div className="p-6">
+                    <div className="flex gap-3 mb-6">
+                        <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="flex-1 bg-slate-50 border-2 border-slate-200 p-3 rounded-xl font-bold text-slate-700 outline-none focus:border-pink-500 text-center">
+                            {ThaiMonthsFull.map(m => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                        <select value={selectedYear} onChange={e => setSelectedYear(e.target.value)} className="w-1/3 bg-slate-50 border-2 border-slate-200 p-3 rounded-xl font-bold text-slate-700 outline-none focus:border-pink-500 text-center">
+                            {Array.from({ length: 5 }, (_, i) => 2567 + i).map(y => <option key={y} value={y}>{y}</option>)}
+                        </select>
+                    </div>
+
+                    {!previewData ? (
+                        <button onClick={handlePreview} disabled={isLoading} className="w-full py-4 bg-pink-50 text-pink-600 border border-pink-200 hover:bg-pink-100 hover:border-pink-300 rounded-xl font-black text-lg transition-colors flex items-center justify-center gap-2">
+                            {isLoading ? '⏳ กำลังประมวลผล...' : '🔍 ดึงข้อมูลมาตรวจสอบ'}
+                        </button>
+                    ) : (
+                        <div className="space-y-4 animate-in slide-in-from-bottom-4">
+                            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-3">
+                                <h4 className="text-center font-bold text-slate-500 text-sm border-b pb-2 mb-2">สรุปผลการประมวลผล</h4>
+                                <div className="flex justify-between"><span className="text-slate-500 font-bold text-sm">จำนวนใบเสร็จที่พบ:</span> <span className="font-black text-blue-600">{previewData.txCount} รายการ</span></div>
+                                <div className="flex justify-between"><span className="text-slate-500 font-bold text-sm">คนมาฝากขยะ:</span> <span className="font-black text-slate-800">{previewData.totalPersons} คน</span></div>
+                                <div className="flex justify-between"><span className="text-slate-500 font-bold text-sm">ขยะรวม:</span> <span className="font-black text-amber-600">{previewData.totalWaste.toLocaleString()} กก.</span></div>
+                                <div className="flex justify-between"><span className="text-slate-500 font-bold text-sm">ยอดเงินจ่ายออก:</span> <span className="font-black text-rose-600">฿{previewData.totalBalance.toLocaleString()}</span></div>
+                                <div className="flex justify-between"><span className="text-slate-500 font-bold text-sm">ลดคาร์บอน:</span> <span className="font-black text-emerald-600">{previewData.totalCarbon.toFixed(4)}</span></div>
+                            </div>
+
+                            <div className="flex gap-3">
+                                <button onClick={() => setPreviewData(null)} className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition">ยกเลิก</button>
+                                <button onClick={handleConfirmSettlement} disabled={isLoading} className="flex-[2] py-3 bg-pink-600 text-white font-black rounded-xl hover:bg-pink-700 shadow-md transition flex items-center justify-center gap-2">
+                                    {isLoading ? 'กำลังบันทึก...' : '✅ ยืนยันปิดยอดเดือนนี้'}
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
 // === แผงควบคุมหลักสำหรับเจ้าหน้าที่ (AdminPanel) โฉมใหม่ (Mobile Responsive) ===
 const AdminPanel = ({
     currentUser, setCurrentPage, members, setMembers, editingVillage, setEditingVillage, onDeleteMember,
     isAddMemberOpen, setIsAddMemberOpen, currentLocation, setTempLocation, tempLocation, villageData,
-    setIsPriceEditing, fetchHistoryData, fetchAdminLogsData, fetchSummaryData
+    setIsPriceEditing, fetchHistoryData, fetchAdminLogsData, fetchSummaryData,
+    db, logAdminAction // <--- รับค่าเพิ่มมาจาก App.jsx
 }) => {
+
+    const [isSettlementOpen, setIsSettlementOpen] = useState(false);
+
     return (
         <div className="space-y-6 animate-in fade-in duration-300">
             {/* กล่อง Header แอดมิน */}
@@ -2993,8 +3258,23 @@ const AdminPanel = ({
                     <h3 className="font-bold text-xs sm:text-lg text-slate-800">นำเข้าข้อมูล</h3>
                     <p className="text-sm text-slate-500 hidden sm:block mt-1">อัปโหลดรายชื่อจากไฟล์ CSV</p>
                 </button>
+                {/* 🟢 เพิ่มปุ่มที่ 9: ปุ่มปิดยอดรายเดือน ไว้ตรงนี้ครับ */}
+                <button onClick={() => setIsSettlementOpen(true)} className="bg-pink-50 p-4 sm:p-6 rounded-2xl border-2 border-pink-100 hover:border-pink-500 transition-all shadow-sm flex flex-col items-center sm:items-start text-center sm:text-left group">
+                    <div className="bg-pink-200 text-pink-700 w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center mb-2 sm:mb-4 group-hover:scale-110 transition shrink-0">
+                        <ClipboardList className="w-5 h-5 sm:w-6 sm:h-6" />
+                    </div>
+                    <h3 className="font-bold text-xs sm:text-lg text-pink-900">ปิดยอดรายเดือน</h3>
+                    <p className="text-sm text-pink-600/80 hidden sm:block mt-1">ประมวลผลบิลและสรุปกราฟ</p>
+                </button>
             </div>
-
+            {isSettlementOpen && (
+                <MonthlySettlementModal
+                    db={db}
+                    villages={villageData}
+                    onClose={() => setIsSettlementOpen(false)}
+                    logAdminAction={logAdminAction}
+                />
+            )}
             {isAddMemberOpen && tempLocation && (
                 <AddMemberModal lat={tempLocation.lat} lng={tempLocation.lng} villageData={villageData} onClose={() => setIsAddMemberOpen(false)}
                     onSave={async (newMem) => {
@@ -3863,6 +4143,13 @@ const RecordWasteView = ({ members, villages, setMembers, setVillages, db, logAd
             };
             await addDoc(collection(db, "waste_transactions"), newTx);
 
+            // 5. อัปเดต State หน้าจอทันที (Local State Update) <--- เพิ่มส่วนนี้เข้ามาครับ
+            if (typeof setMembers === 'function') {
+                const nextMembers = members.map(m => String(m.id) === String(houseMember.id) ? updatedMemberObj : m);
+                setMembers(nextMembers);
+                localStorage.setItem('local_members_data', JSON.stringify(nextMembers));
+            }
+
             // 6. รีเฟรชหน้าจอ
             setActivePersonKey(null);
             setCurrentBasket([]);
@@ -4064,7 +4351,7 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
     const now = new Date();
     const [importMonth, setImportMonth] = useState(ThaiMonths[now.getMonth()]);
     const [importYear, setImportYear] = useState(String(now.getFullYear() + 543));
-    const [monthlySummaryPayload, setMonthlySummaryPayload] = useState(null);
+    const [previewTransactions, setPreviewTransactions] = useState([]);
     const [importMode, setImportMode] = useState('increment'); // 'increment' (บวกทบ) หรือ 'overwrite' (ทับข้อมูลเดิม)
     const [isDuplicateMonth, setIsDuplicateMonth] = useState(false); // เช็กว่าเดือนนี้เคยนำเข้าหรือยัง
     const [showDuplicateModal, setShowDuplicateModal] = useState(false);
@@ -4190,20 +4477,20 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
         }
     };
 
-    // 🌟 2. ฟังก์ชันประมวลผล (อัปเกรด: ไดนามิก + ค้นหาคนเดิมแล้วบวกยอดเพิ่ม)
+
+    // 🌟 2. ฟังก์ชันประมวลผล 
     const processImportData = (data) => {
-        // ดึงข้อมูลบ้านทั้งหมดที่มีในระบบมาเป็นฐานก่อน
         const houseMap = {};
         if (members && members.length > 0) {
             members.forEach(m => {
-                houseMap[m.houseNo] = JSON.parse(JSON.stringify(m)); // Deep copy ป้องกันกระทบข้อมูลจริง
+                houseMap[m.houseNo] = JSON.parse(JSON.stringify(m));
             });
         }
 
         let totalPersons = 0;
         let totalMoney = 0;
+        const newTransactions = []; // 🌟 กล่องเก็บใบเสร็จสำหรับเตรียมโยนลงสระน้ำ
 
-        // 🌟 พระเอกอยู่ตรงนี้: กำหนดชื่อคอลัมน์ที่เป็น "ข้อมูลพื้นฐาน" เอาไว้
         const standardColumns = ['บ้านเลขที่', 'หมวดหมู่', 'ชื่อสมาชิก', 'การคัดแยก', 'สิทธิ์สวัสดิการ', 'ยอดเงินตั้งต้น'];
 
         data.forEach((row, index) => {
@@ -4220,14 +4507,11 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
             const wasteToAdd = {};
             let carbonToAdd = 0;
 
-            // 🌟 1. ไม่ใช้ wasteTypes แล้ว! แต่จะกวาดสายตาอ่านทุกคอลัมน์ใน Excel เลย
             Object.keys(row).forEach(columnName => {
-                // ถ้าคอลัมน์ที่อ่านอยู่ "ไม่ใช่" ข้อมูลพื้นฐาน -> เหมาว่ามันคือ "ชื่อขยะ" ทั้งหมด!
                 if (!standardColumns.includes(columnName)) {
                     const weight = Number(row[columnName]) || 0;
                     if (weight > 0) {
                         wasteToAdd[columnName] = weight;
-                        // ถ้าขยะแปลกๆ นี้มีสูตรคาร์บอนตรงกับที่เราตั้งไว้ ก็ให้คูณ ถ้าไม่มีก็ข้ามไป
                         if (CARBON_MULTIPLIERS[columnName]) {
                             carbonToAdd += weight * CARBON_MULTIPLIERS[columnName];
                         }
@@ -4235,7 +4519,6 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
                 }
             });
 
-            // ถ้าไม่มีบ้านเลขที่นี้ในระบบ ให้สร้างบ้านหลังใหม่
             if (!houseMap[houseNo]) {
                 const vMatch = category.match(/\d+/);
                 houseMap[houseNo] = {
@@ -4251,17 +4534,14 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
 
             const targetHouse = houseMap[houseNo];
             let existingPerson = targetHouse.familyMembers.find(p => p.name === name);
-            if (existingPerson) {
-                // 🌟 เก็บยอดเดิมไว้โชว์หน้า UI ก่อนถูกคำนวณทับ
-                existingPerson.oldBalance = Number(existingPerson.balance) || 0;
 
-                // 🌟 กลไกที่ 2: สวิตช์แยกว่าจะ "บวกทบ" หรือ "ล้างไพ่ทับของเดิม"
+            if (existingPerson) {
+                existingPerson.oldBalance = Number(existingPerson.balance) || 0;
                 if (importMode === 'increment') {
                     existingPerson.balance = existingPerson.oldBalance + balanceToAdd;
                     existingPerson.credit = (Number(existingPerson.credit) || 0) + Number(carbonToAdd.toFixed(4));
                     existingPerson.hasWelfare = existingPerson.hasWelfare || hasWelfare;
                     existingPerson.isSorted = existingPerson.isSorted || isSorted;
-
                     if (!existingPerson.wasteData) existingPerson.wasteData = {};
                     Object.keys(wasteToAdd).forEach(wType => {
                         existingPerson.wasteData[wType] = (Number(existingPerson.wasteData[wType]) || 0) + wasteToAdd[wType];
@@ -4274,11 +4554,10 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
                     existingPerson.wasteData = { ...wasteToAdd };
                 }
             } else {
-                // 🔵 กรณีไม่มีคนชื่อนี้ -> เพิ่มเป็นสมาชิกคนใหม่เข้าบ้านไปเลย
                 targetHouse.familyMembers.push({
                     id: String(Date.now() + index + '_p'),
                     name: name,
-                    oldBalance: 0, // 🌟 คนใหม่ยอดเดิมคือ 0 เสมอ
+                    oldBalance: 0,
                     balance: balanceToAdd,
                     credit: Number(carbonToAdd.toFixed(4)),
                     wasteData: wasteToAdd,
@@ -4287,11 +4566,27 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
                 });
             }
 
+            // 🌟 สร้างใบเสร็จ 1 ใบต่อคน โยนเข้าคิวไว้ (ประทับตราเดือนที่เลือกจากหน้าจอ)
+            if (Object.keys(wasteToAdd).length > 0 || balanceToAdd > 0) {
+                newTransactions.push({
+                    houseNo: houseNo,
+                    personName: name,
+                    villageId: targetHouse.villageId,
+                    category: category,
+                    wasteData: wasteToAdd,
+                    creditAdded: Number(carbonToAdd.toFixed(4)),
+                    addedBalance: balanceToAdd,
+                    // 🌟 ใช้เดือน/ปี ที่น้าเลือกจาก Dropdown ในหน้าเว็บ เพื่อสร้างใบเสร็จย้อนหลังได้เป๊ะๆ
+                    date: `${now.getDate()} ${importMonth} ${importYear}`,
+                    time: `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')} น.`,
+                    operator: 'ระบบนำเข้าข้อมูล (Excel)'
+                });
+            }
+
             totalPersons += 1;
             totalMoney += balanceToAdd;
         });
 
-        // คำนวณยอดรวมของบ้านใหม่ทั้งหมด
         const finalHouses = Object.values(houseMap).map(house => {
             let houseBalance = 0;
             let houseCredit = 0;
@@ -4317,54 +4612,15 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
             };
         });
 
-        // 🌟 กรองเอาเฉพาะ "บ้านที่มีการเคลื่อนไหว/อัปเดต" ในไฟล์รอบนี้มาแสดงเท่านั้น
         const updatedHousesOnly = finalHouses.filter(h => data.some(r => r['บ้านเลขที่'] === h.houseNo));
-        let sumWaste = 0;
-        let sumCarbon = 0;
-        let sortedCount = 0;
-        let unsortedCount = 0;
-        const wasteAgg = {};
-        const villageAgg = {};
 
-        data.forEach(row => {
-            const category = row['หมวดหมู่'] || 'หมวดที่ 1';
-            const isSorted = row['การคัดแยก'] === 'มี' || row['การคัดแยก'] === 'ใช่';
-            if (isSorted) sortedCount++; else unsortedCount++;
-
-            if (!villageAgg[category]) villageAgg[category] = { id: category, name: category, realBalance: 0 };
-            villageAgg[category].realBalance += (Number(row['ยอดเงินตั้งต้น']) || 0);
-
-            // 🌟 2. ตรงนี้ก็ต้องกวาดอ่านทุกคอลัมน์ใหม่เหมือนกัน เพื่อรวมน้ำหนักขยะทั้งหมดในบิล
-            Object.keys(row).forEach(columnName => {
-                if (!standardColumns.includes(columnName)) {
-                    const w = Number(row[columnName]) || 0;
-                    if (w > 0) {
-                        wasteAgg[columnName] = (wasteAgg[columnName] || 0) + w;
-                        sumWaste += w;
-                        if (CARBON_MULTIPLIERS[columnName]) {
-                            sumCarbon += w * CARBON_MULTIPLIERS[columnName];
-                        }
-                    }
-                }
-            });
-        });
-
-        setMonthlySummaryPayload({
-            topWasteType: Object.entries(wasteAgg).sort((a, b) => b[1] - a[1])[0]?.[0] || '-',
-            totalWaste: sumWaste,
-            totalBalance: totalMoney,
-            totalHouses: updatedHousesOnly.length,
-            totalPersons: totalPersons,
-            totalCarbon: sumCarbon,
-            sortedPersons: sortedCount,
-            unsortedPersons: unsortedCount,
-            wasteData: wasteAgg,
-            villageData: Object.values(villageAgg)
-        });
+        // 🌟 เซฟข้อมูลเตรียมยิงขึ้นฐานข้อมูล
+        setPreviewTransactions(newTransactions);
         setPreviewHouses(updatedHousesOnly);
         setSummary({ houses: updatedHousesOnly.length, persons: totalPersons, money: totalMoney });
         setStep(2);
     };
+
     const handleConfirmImport = async () => {
         if (previewHouses.length === 0) return;
         setStep(3);
@@ -4372,18 +4628,41 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
 
         try {
             const chunkSize = 25;
+            const totalUploadTasks = previewHouses.length + previewTransactions.length;
+            let completedTasks = 0;
+
+            // 1. อัปเดตข้อมูลบ้านลงคอลเลกชัน members
             for (let i = 0; i < previewHouses.length; i += chunkSize) {
                 const chunk = previewHouses.slice(i, i + chunkSize);
-                // ใช้ setDoc เพื่อบันทึก/อัปเดตข้อมูลบ้านทั้งหลัง
                 await Promise.all(chunk.map(house => setDoc(doc(db, "members", String(house.id)), house)));
-                const progress = Math.round(((i + chunk.length) / previewHouses.length) * 100);
-                setUploadProgress(progress);
+                completedTasks += chunk.length;
+                setUploadProgress(Math.round((completedTasks / totalUploadTasks) * 100));
             }
 
-            // 🌟 3. (แทรกเพิ่มตรงนี้) บันทึกข้อมูลสรุปรายเดือนลงคอลเลกชัน monthly_summaries ทันทีที่อัปโหลดไฟล์เสร็จ
-            if (monthlySummaryPayload) {
-                const docId = `${importYear}_${importMonth}`;
-                await setDoc(doc(db, "monthly_summaries", docId), monthlySummaryPayload);
+            // 2. 🌟 โยนใบเสร็จลงสระน้ำ waste_transactions แทนการอัปเดตบิลรายเดือน!
+            for (let i = 0; i < previewTransactions.length; i += chunkSize) {
+                const chunk = previewTransactions.slice(i, i + chunkSize);
+                await Promise.all(chunk.map(tx => addDoc(collection(db, "waste_transactions"), { ...tx, timestamp: serverTimestamp() })));
+                completedTasks += chunk.length;
+                setUploadProgress(Math.round((completedTasks / totalUploadTasks) * 100));
+            }
+
+            // 3. 🌟 Local State Update: วาดหน้าจอใหม่ทันที ไม่ต้องรีเฟรช 
+            if (typeof setMembers === 'function') {
+                const updatedMembers = members.map(m => {
+                    const importedHouse = previewHouses.find(ph => ph.houseNo === m.houseNo);
+                    return importedHouse ? importedHouse : m;
+                });
+
+                // สำหรับบ้านใหม่ที่เพิ่งถูกเพิ่มครั้งแรกจาก Excel
+                previewHouses.forEach(ph => {
+                    if (!updatedMembers.find(m => m.houseNo === ph.houseNo)) {
+                        updatedMembers.push(ph);
+                    }
+                });
+
+                setMembers(updatedMembers);
+                localStorage.setItem('local_members_data', JSON.stringify(updatedMembers));
             }
 
             if (typeof logAdminAction === 'function') {
@@ -4391,8 +4670,10 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
             }
             alert(`🎉 นำเข้าข้อมูล จาก "${importedFileName}" สำเร็จเรียบร้อยแล้วทั้งสิ้น ${summary.houses} หลัง`);
 
-            if (typeof refreshData === 'function')
-                setCurrentPage('members'); // กลับไปหน้าสมาชิก
+            // พาแอดมินกลับไปหน้าทะเบียนสมาชิก (หน้าจอจะเปลี่ยนเลขใหม่ออโต้ เพราะเราอัปเดต Local State แล้ว)
+            if (typeof setCurrentPage === 'function') {
+                setCurrentPage('members');
+            }
         } catch (err) {
             console.error(err);
             alert("❌ เกิดข้อผิดพลาดระหว่างอัปโหลด กรุณาตรวจสอบสัญญาณอินเทอร์เน็ต");
@@ -5487,7 +5768,7 @@ const App = () => {
         if (isDataLoaded.history) return; // ถ้าเคยโหลดแล้ว ให้ข้ามเลย ประหยัด DB
         setIsLoadingData(true);
         try {
-            const txSnap = await getDocs(query(collection(db, "waste_transactions"), orderBy("timestamp", "desc")));
+            const txSnap = await getDocs(query(collection(db, "waste_transactions"), orderBy("timestamp", "desc"), limit(2000)));
             setTransactions(txSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
             setIsDataLoaded(prev => ({ ...prev, history: true }));
         } catch (error) { console.error("โหลดประวัติขยะพลาด:", error); }
@@ -5689,6 +5970,8 @@ const App = () => {
                         fetchHistoryData={fetchHistoryData}
                         fetchAdminLogsData={fetchAdminLogsData}
                         fetchSummaryData={fetchSummaryData}
+                        db={db}
+                        logAdminAction={logAdminAction}
                     />
 
                 ) : (
