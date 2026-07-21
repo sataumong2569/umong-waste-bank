@@ -34,6 +34,20 @@ import AdminLogsView from './AdminLogsView'
  * @param {function} onClick - ฟังก์ชันที่จะทำงานเมื่อกดปุ่ม (เช่น เปลี่ยนหน้า)
  * @param {string} label - ชื่อของเมนูที่จะแสดง
  */
+const calculateWelfareGrade = (balance) => {
+    const money = Number(balance) || 0;
+
+    if (money >= 800) {
+        return { hasWelfare: true, grade: 'เกรด A', label: '🎁 สิทธิ์ เกรด A', color: 'bg-red-50 text-red-700 border-red-200' };
+    } else if (money >= 500) {
+        return { hasWelfare: true, grade: 'เกรด B', label: '🎁 สิทธิ์ เกรด B', color: 'bg-orange-50 text-orange-700 border-orange-200' };
+    } else if (money >= 120) {
+        return { hasWelfare: true, grade: 'มีสิทธิ์', label: '🎁 มีสิทธิ์สวัสดิการ', color: 'bg-amber-50 text-amber-700 border-amber-200' };
+    }
+
+    return { hasWelfare: false, grade: 'ไม่มีสิทธิ์', label: '❌ ไม่มีสิทธิ', color: 'bg-slate-50 text-slate-400 border-slate-200' };
+};
+
 const NavItem = ({ active, onClick, label }) => (
     <button onClick={onClick}
         className={`text-sm font-semibold transition-colors ${active
@@ -1232,6 +1246,10 @@ const MembersView = ({ members, setMembers, villages, setVillages, isLoggedIn, l
         }
 
         //  2. คำนวณยอดรวมของบ้านใหม่ทั้งหมด (เงิน, คาร์บอน, สถานะ) จาก "รายบุคคล"
+        updatedMember.familyMembers = updatedMember.familyMembers.map(p => {
+            const autoGrade = calculateWelfareGrade(p.balance);
+            return { ...p, hasWelfare: autoGrade.hasWelfare, welfareGrade: autoGrade.grade };
+        });
         updatedMember.balance = updatedMember.familyMembers.reduce((sum, p) => sum + (Number(p.balance) || 0), 0);
         updatedMember.credit = updatedMember.familyMembers.reduce((sum, p) => sum + (Number(p.credit) || 0), 0);
         updatedMember.isSorted = updatedMember.familyMembers.some(p => p.isSorted);
@@ -1569,8 +1587,8 @@ const MembersView = ({ members, setMembers, villages, setVillages, isLoggedIn, l
                                                                                     <span className={`px-2 py-1 rounded-md text-[10px] font-bold border ${pIsSorted ? 'bg-green-100 text-green-700 border-green-200' : 'bg-slate-50 text-slate-400 border-slate-200'}`}>
                                                                                         {pIsSorted ? '✅ แยกขยะ' : '⚪ ไม่แยก'}
                                                                                     </span>
-                                                                                    <span className={`px-2 py-1 rounded-md text-[10px] font-bold border ${pHasWelfare ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-slate-50 text-slate-400 border-slate-200'}`}>
-                                                                                        {pHasWelfare ? '🎁 สวัสดิการ' : '❌ ไม่มีสิทธิ'}
+                                                                                    <span className={`px-2 py-1 rounded-md text-[10px] font-bold border shadow-sm ${calculateWelfareGrade(pBalance).color}`}>
+                                                                                        {calculateWelfareGrade(pBalance).label}
                                                                                     </span>
                                                                                 </div>
                                                                             </div>
@@ -1965,6 +1983,7 @@ const ManageBalanceView = ({ members, villages, setMembers, db, logAdminAction, 
             const updatedFamily = (houseMember.familyMembers || []).map((p, idx) => {
                 const pId = p.id || String(idx);
                 if (String(pId) === String(personId)) {
+                    const autoGrade = calculateWelfareGrade(newBalance);
                     if (typeof p === 'string') {
                         return { id: pId, name: p, balance: newBalance, credit: 0, wasteData: {}, hasWelfare: false, isSorted: false };
                     }
@@ -2014,14 +2033,14 @@ const ManageBalanceView = ({ members, villages, setMembers, db, logAdminAction, 
                     const updatedFamily = (targetMem.familyMembers || []).map((p, idx) => {
                         const pId = p.id || String(idx);
                         if (personIdsToDeduct.includes(String(pId))) {
-                            // ดักจับข้อมูลเก่า
                             const pBalance = typeof p === 'string' ? 0 : (Number(p.balance) || 0);
                             const newBalance = Math.max(0, pBalance - deductAmount);
+                            const autoGrade = calculateWelfareGrade(newBalance);
 
                             if (typeof p === 'string') {
-                                return { id: pId, name: p, balance: newBalance, credit: 0, wasteData: {}, hasWelfare: false, isSorted: false };
+                                return { id: pId, name: p, balance: newBalance, credit: 0, wasteData: {}, hasWelfare: autoGrade.hasWelfare, welfareGrade: autoGrade.grade, isSorted: false };
                             }
-                            return { ...p, balance: newBalance };
+                            return { ...p, balance: newBalance, hasWelfare: autoGrade.hasWelfare, welfareGrade: autoGrade.grade };
                         }
                         return p;
                     });
@@ -2607,7 +2626,7 @@ const MemberSummaryView = ({ members, villages, setCurrentPage, globalPrices }) 
                 `="${m.houseNo}"`, // 🌟 2. ใช้สูตร ="..." บังคับให้ Excel มองเป็นข้อความ ห้ามแปลงเป็นวันที่
                 m.name,
                 m.isSorted ? '✅ แยก' : '❌ ไม่แยก',
-                m.hasWelfare ? '🎁 มี' : '❌ ไม่มี', // 🌟 3. ดึงข้อมูลสวัสดิการมาแสดงผล
+                calculateWelfareGrade(m.balance).grade,
                 ...wCols,
                 rowW.toFixed(2),
                 m.balance,
@@ -3587,9 +3606,9 @@ const AddMemberModal = ({ initialLat, initialLng, villageData, onSave, onClose, 
                                         <button type="button" onClick={() => updateMemberField(index, 'isSorted', !person.isSorted)} className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all border-2 ${person.isSorted ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>
                                             {person.isSorted ? '✅ คัดแยกขยะแล้ว' : '⚪ ไม่คัดแยก'}
                                         </button>
-                                        <button type="button" onClick={() => updateMemberField(index, 'hasWelfare', !person.hasWelfare)} className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all border-2 ${person.hasWelfare ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>
-                                            {person.hasWelfare ? '🎁 มีสวัสดิการ' : '❌ ไม่มีสิทธิ'}
-                                        </button>
+                                        <div className={`flex-1 py-3 rounded-xl text-sm font-black transition-all border-2 text-center shadow-sm ${calculateWelfareGrade(person.balance).color}`}>
+                                            {calculateWelfareGrade(person.balance).label}
+                                        </div>
                                     </div>
 
                                     <div className="bg-slate-50 border border-slate-100 rounded-2xl overflow-hidden mt-2">
@@ -4242,19 +4261,29 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
 
             if (existingPerson) {
                 existingPerson.oldBalance = Number(existingPerson.balance) || 0;
-                // ตัดเรื่องสวิตช์ทิ้ง บังคับบวกทบ (Increment) อย่างเดียวเพื่อให้เป็นระบบ Transaction
+
                 existingPerson.balance = existingPerson.oldBalance + balanceToAdd;
                 existingPerson.credit = (Number(existingPerson.credit) || 0) + Number(carbonToAdd.toFixed(4));
-                existingPerson.hasWelfare = existingPerson.hasWelfare || hasWelfare;
+
+                //  1. ลบของเดิมทิ้ง แล้วให้สมองกลคำนวณสิทธิ์ออโต้จากเงินสะสมล่าสุด
+                const autoGrade = calculateWelfareGrade(existingPerson.balance);
+                existingPerson.hasWelfare = autoGrade.hasWelfare;
+                existingPerson.welfareGrade = autoGrade.grade;
+
                 existingPerson.isSorted = existingPerson.isSorted || isSorted;
                 if (!existingPerson.wasteData) existingPerson.wasteData = {};
                 Object.keys(wasteToAdd).forEach(wType => {
                     existingPerson.wasteData[wType] = (Number(existingPerson.wasteData[wType]) || 0) + wasteToAdd[wType];
                 });
             } else {
+                //  2. คนใหม่ก็ให้สมองกลคิดเกรดออโต้จากเงินตั้งต้น
+                const autoGradeNew = calculateWelfareGrade(balanceToAdd);
                 targetHouse.familyMembers.push({
                     id: String(Date.now() + index + '_p'), name: name, oldBalance: 0,
-                    balance: balanceToAdd, credit: Number(carbonToAdd.toFixed(4)), wasteData: wasteToAdd, hasWelfare: hasWelfare, isSorted: isSorted
+                    balance: balanceToAdd, credit: Number(carbonToAdd.toFixed(4)), wasteData: wasteToAdd,
+                    hasWelfare: autoGradeNew.hasWelfare,
+                    welfareGrade: autoGradeNew.grade,
+                    isSorted: isSorted
                 });
             }
 
@@ -4480,26 +4509,12 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
                                     <AlertTriangle size={24} className="shrink-0 mt-0.5" />
                                     <div>
                                         <p className="font-black text-sm">⚠️ ระบบเคยสรุปบิลของเดือน {importMonth} {importYear} ไปแล้ว!</p>
-                                        <p className="text-xs font-bold mt-1 opacity-80">หากนำเข้าแบบ "บวกทบ" ยอดเงินเดือนนี้จะเบิ้ล 2 เท่า กรุณาตรวจสอบให้แน่ใจ</p>
+                                        <p className="text-xs font-bold mt-1 opacity-80">หากนำเข้าแบบ "บวกทบ" ยอดเงินเดือนนี้จะเพิ่ม 2 เท่า กรุณาตรวจสอบให้แน่ใจ</p>
                                     </div>
                                 </div>
                             )}
 
-                            {/* 🌟 สวิตช์สลับโหมดนำเข้า */}
-                            <div className="flex bg-slate-100 p-1.5 rounded-2xl w-full max-w-lg mx-auto mb-6 relative z-10">
-                                <button
-                                    onClick={() => setImportMode('increment')}
-                                    className={`flex-1 py-3 px-4 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 ${importMode === 'increment' ? 'bg-white text-blue-600 shadow-sm border border-slate-200' : 'text-slate-500 hover:bg-slate-200'}`}
-                                >
-                                    <PlusCircle size={16} /> โหมดบวก (ยอดรวมเพิ่มขึ้น)
-                                </button>
-                                <button
-                                    onClick={() => setImportMode('overwrite')}
-                                    className={`flex-1 py-3 px-4 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 ${importMode === 'overwrite' ? 'bg-rose-500 text-white shadow-sm border border-rose-600' : 'text-slate-500 hover:bg-slate-200'}`}
-                                >
-                                    <Database size={16} /> โหมดแทนที่ (ข้อมูลใหม่แทนที่ข้อมูลเดิมทั้งหมด)
-                                </button>
-                            </div>
+
                             {/* 🌟 4. เพิ่ม Dropdown ระบุเดือนและปีของไฟล์ที่จะนำเข้า */}
                             <div className="flex gap-3 mb-8 w-full max-w-sm mx-auto justify-center z-10 relative">
                                 <select
@@ -4553,9 +4568,8 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
                                     </h3>
 
                                     <div className="mb-4">
-                                        <span className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-black border shadow-sm ${importMode === 'increment' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
-                                            {importMode === 'increment' ? <PlusCircle size={16} /> : <Database size={16} />}
-                                            {importMode === 'increment' ? 'โหมดนำเข้า: บวกทบยอดเพิ่มจากของเดิม' : 'โหมดนำเข้า: เขียนทับข้อมูลเดิมทั้งหมด (ล้างไพ่)'}
+                                        <span className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-black border shadow-sm bg-blue-50 text-blue-700 border-blue-200">
+                                            <PlusCircle size={16} /> โหมดนำเข้า: บวกทบยอดเงินสะสม (ระบบจะสร้างบิลประวัติอัตโนมัติ)
                                         </span>
                                     </div>
 
@@ -4687,8 +4701,8 @@ const ImportDataView = ({ db, members = [], villages, refreshData, setCurrentPag
                                     <div className="bg-rose-50 p-4 rounded-xl text-rose-700 text-sm font-medium border border-rose-100 text-left my-4">
                                         <span className="block font-black mb-1">สิ่งที่จะเกิดขึ้นหากดำเนินการต่อ:</span>
                                         <ul className="list-disc pl-5 space-y-1">
-                                            <li>หากอยู่ใน <b>"โหมดบวกทบ"</b> ยอดเงินเดือนนี้จะถูก <span className="font-black underline">เพิมเป็น 2 เท่า</span></li>
-                                            <li>หากอยู่ใน <b>"โหมดแทนที่"</b> ยอดเงินเก่าทั้งหมดจะถูก <span className="font-black underline">ลบและทับใหม่</span> ทันที</li>
+                                            <li>ยอดเงินทั้งหมดในไฟล์นี้จะถูก <span className="font-black underline">บวกเพิ่ม</span> เข้าไปในบัญชีลูกบ้านทันที</li>
+                                            <li>สถิติน้ำหนักขยะของเดือนนี้บน Dashboard จะสูงขึ้นกว่าความเป็นจริง</li>
                                         </ul>
                                     </div>
                                     <div className="flex gap-3 w-full mt-6">
@@ -4721,19 +4735,7 @@ const getWasteUnit = (wasteName) => {
     return 'กก.';
 };
 
-const calculateWelfareGrade = (balance) => {
-    const money = Number(balance) || 0;
 
-    if (money >= 800) {
-        return { hasWelfare: true, grade: 'เกรด A', label: '🎁 สิทธิ์ เกรด A', color: 'bg-red-50 text-red-700 border-red-200' };
-    } else if (money >= 500) {
-        return { hasWelfare: true, grade: 'เกรด B', label: '🎁 สิทธิ์ เกรด B', color: 'bg-orange-50 text-orange-700 border-orange-200' };
-    } else if (money >= 120) {
-        return { hasWelfare: true, grade: 'มีสิทธิ์', label: '🎁 มีสิทธิ์สวัสดิการ', color: 'bg-amber-50 text-amber-700 border-amber-200' };
-    }
-
-    return { hasWelfare: false, grade: 'ไม่มีสิทธิ์', label: '❌ ไม่มีสิทธิ', color: 'bg-slate-50 text-slate-400 border-slate-200' };
-};
 
 const App = () => {
     // --- DATABASE: ส่วนเก็บข้อมูลหลักของแอปพลิเคชัน ---
@@ -4779,8 +4781,8 @@ const App = () => {
             setVillages(villagesData);
             localStorage.setItem('village_data', JSON.stringify(villagesData));
 
-            // 3. โหลดประวัติแอดมิน (เอาแค่ 200 รายการล่าสุด จะได้ไม่หนัก)
-            const logsSnap = await getDocs(query(collection(db, "admin_logs"), orderBy("timestamp", "desc"), limit(200)));
+            // 3. โหลดประวัติแอดมิน 
+            const logsSnap = await getDocs(query(collection(db, "admin_logs"), orderBy("timestamp", "desc"), limit(100)));
             setAdminLogs(logsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
             /// 🌟 5. โหลดราคากลางจาก Firestore
@@ -4890,7 +4892,9 @@ const App = () => {
                         pObj.balance = (Number(pObj.balance) || 0) + finalBalanceToAdd;
                         pObj.credit = (Number(pObj.credit) || 0) + finalCreditToAdd;
                         pObj.isSorted = true;
-
+                        const autoGrade = calculateWelfareGrade(pObj.balance);
+                        pObj.hasWelfare = autoGrade.hasWelfare;
+                        pObj.welfareGrade = autoGrade.grade;
                         const pWaste = { ...(pObj.wasteData || {}) };
                         Object.keys(turnWasteData).forEach(type => {
                             pWaste[type] = (Number(pWaste[type]) || 0) + (Number(turnWasteData[type]) || 0);
@@ -5511,7 +5515,7 @@ const App = () => {
         if (isDataLoaded.logs) return;
         setIsLoadingData(true);
         try {
-            const logsSnap = await getDocs(query(collection(db, "admin_logs"), orderBy("timestamp", "desc"), limit(200)));
+            const logsSnap = await getDocs(query(collection(db, "admin_logs"), orderBy("timestamp", "desc"), limit(100)));
             setAdminLogs(logsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
             setIsDataLoaded(prev => ({ ...prev, logs: true }));
         } catch (error) { console.error("โหลดประวัติแอดมินพลาด:", error); }
